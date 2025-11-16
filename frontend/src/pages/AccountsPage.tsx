@@ -36,21 +36,6 @@ type FormState = {
   initialDate: string;
 };
 
-type AccountContribution = {
-  id: string;
-  label: string;
-  amount: number;
-  kind: 'deposit' | 'withdrawal';
-  date: string;
-};
-
-type ContributionFormState = {
-  label: string;
-  amount: string;
-  date: string;
-  kind: 'deposit' | 'withdrawal';
-};
-
 const emptyFormState: FormState = {
   name: '',
   type: '',
@@ -58,8 +43,6 @@ const emptyFormState: FormState = {
   initialValue: '',
   initialDate: ''
 };
-
-const ACTIONS_STORAGE_KEY = 'sy-finance:account-actions';
 
 export function AccountsPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -582,4 +565,4 @@ function formatTimelineDate(value: string) {
   }
   return parsed.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' });
 }
-x
+
