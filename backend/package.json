@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "nodemon --exec ts-node --esm src/server.ts",
+    "dev": "TS_NODE_TRANSPILE_ONLY=1 nodemon src/server.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "lint": "eslint \"src/**/*.{ts,tsx}\""
