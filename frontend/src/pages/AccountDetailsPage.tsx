@@ -7,6 +7,7 @@ import { apiClient } from '../utils/apiClient';
 import {
   type AccountContribution,
   type ContributionFormState,
+  calculateTrackedCapital,
   createContributionDraft,
   createLocalId,
   persistStoredActions,
@@ -329,6 +330,7 @@ export function AccountDetailsPage() {
 
   const contributions = id ? accountActions[id] ?? [] : [];
   const monthlyFlow = useMemo(() => calculateFlow(contributions), [contributions]);
+  const trackedCapital = useMemo(() => calculateTrackedCapital(contributions), [contributions]);
   const trackedOneTimeImpact = useMemo(
     () =>
       contributions
@@ -396,6 +398,15 @@ export function AccountDetailsPage() {
           <div className="stat-card-heading">Valeur actuelle</div>
           <p>{latestValuation ? formatCurrency(latestValuation.value, account?.currency) : '—'}</p>
           <small>Dernière mise à jour le {formatDate(latestValuation?.date)}</small>
+        </div>
+        <div className="card stat-card">
+          <h4>Capital suivi</h4>
+          <p>
+            {trackedCapital === 0
+              ? '—'
+              : `${trackedCapital >= 0 ? '+' : ''}${formatCurrency(trackedCapital, account?.currency)}`}
+          </p>
+          <small>Somme des versements et retraits enregistrés.</small>
         </div>
         <div className="card stat-card">
           <h4>Variation récente</h4>

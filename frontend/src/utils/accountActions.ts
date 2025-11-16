@@ -68,3 +68,10 @@ export function createContributionDraft(): ContributionFormState {
     cadence: 'monthly'
   };
 }
+
+export function calculateTrackedCapital(contributions: AccountContribution[]): number {
+  return contributions.reduce((sum, contribution) => {
+    const direction = contribution.kind === 'withdrawal' ? -1 : 1;
+    return sum + direction * contribution.amount;
+  }, 0);
+}

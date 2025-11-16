@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 
 import { apiClient } from '../utils/apiClient';
+import { calculateTrackedCapital, readStoredActions } from '../utils/accountActions';
 
 const COLORS = ['#4E79A7', '#F28E2B', '#E15759', '#76B7B2', '#59A14F', '#EDC948'];
 
@@ -100,6 +101,7 @@ export function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [trackedCapital, setTrackedCapital] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -126,6 +128,14 @@ export function DashboardPage() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    const storedActions = readStoredActions();
+    const totalCapital = Object.values(storedActions).reduce((sum, contributions) => {
+      return sum + calculateTrackedCapital(contributions);
+    }, 0);
+    setTrackedCapital(totalCapital);
   }, []);
 
   const netWorthHistory = data?.netWorthHistory ?? [];
@@ -208,6 +218,11 @@ export function DashboardPage() {
             </div>
           )}
           <small>Dernière mise à jour : {formatDate(data?.summary.lastUpdated)}</small>
+        </div>
+        <div className="card stat-card">
+          <h4>Capital versé suivi</h4>
+          <p>{trackedCapital === 0 ? '—' : `${trackedCapital >= 0 ? '+' : ''}${formatCurrency(trackedCapital)}`}</p>
+          <small>Somme des versements/retraits consignés dans chaque compte.</small>
         </div>
         <div className="card stat-card">
           <h4>Valeur moyenne par compte</h4>
