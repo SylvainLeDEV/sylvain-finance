@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, FormEvent, MouseEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
@@ -92,21 +92,18 @@ type AccountValue = {
   accountId: string;
   date: string;
   value: number;
-  netFlows: number;
   createdAt: string;
 };
 
 type ValuationFormState = {
   date: string;
   value: string;
-  netFlows: string;
 };
 
 function createValuationForm(): ValuationFormState {
   return {
     date: new Date().toISOString().slice(0, 10),
-    value: '',
-    netFlows: '0'
+    value: ''
   };
 }
 
@@ -118,7 +115,11 @@ export function AccountDetailsPage() {
   const [error, setError] = useState<string | null>(null);
   const [valuationForm, setValuationForm] = useState<ValuationFormState>(() => createValuationForm());
   const [valuationError, setValuationError] = useState<string | null>(null);
+  const [valuationHistoryError, setValuationHistoryError] = useState<string | null>(null);
   const [isSavingValuation, setIsSavingValuation] = useState(false);
+  const [isUpdatingValuation, setIsUpdatingValuation] = useState(false);
+  const [editingValuationId, setEditingValuationId] = useState<string | null>(null);
+  const [editingValuationForm, setEditingValuationForm] = useState<ValuationFormState | null>(null);
   const [accountActions, setAccountActions] = useState<Record<string, AccountContribution[]>>(
     () => readStoredActions()
   );
@@ -168,6 +169,14 @@ export function AccountDetailsPage() {
     setValuationForm((prev) => ({ ...prev, [name]: value }));
   }
 
+  async function refreshValuations() {
+    if (!id) {
+      return;
+    }
+    const { data } = await apiClient.get<{ data: AccountValue[] }>('/values', { params: { accountId: id } });
+    setValuations(data.data);
+  }
+
   async function handleValuationSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!id) {
@@ -178,23 +187,98 @@ export function AccountDetailsPage() {
       setValuationError('Indiquez une valorisation valide.');
       return;
     }
-    const netFlowsNumber = Number(valuationForm.netFlows || '0');
     setIsSavingValuation(true);
     setValuationError(null);
     try {
       await apiClient.post('/values', {
         accountId: id,
         date: valuationForm.date || new Date().toISOString().slice(0, 10),
-        value: valueNumber,
-        netFlows: Number.isFinite(netFlowsNumber) ? netFlowsNumber : 0
+        value: valueNumber
       });
-      const { data } = await apiClient.get<{ data: AccountValue[] }>('/values', { params: { accountId: id } });
-      setValuations(data.data);
+      await refreshValuations();
       setValuationForm((prev) => ({ ...prev, value: '' }));
+      setValuationHistoryError(null);
     } catch (err) {
       setValuationError(getErrorMessage(err));
     } finally {
       setIsSavingValuation(false);
+    }
+  }
+
+  function handleStartValuationEdit(valuation: AccountValue) {
+    setEditingValuationId(valuation.id);
+    setEditingValuationForm({
+      date: valuation.date,
+      value: valuation.value.toString()
+    });
+    setValuationHistoryError(null);
+  }
+
+  function handleCancelValuationEdit(event?: MouseEvent<HTMLButtonElement>) {
+    event?.preventDefault();
+    setEditingValuationId(null);
+    setEditingValuationForm(null);
+    setValuationHistoryError(null);
+  }
+
+  function handleValuationEditChange(event: ChangeEvent<HTMLInputElement>) {
+    if (!editingValuationForm) {
+      return;
+    }
+    const { name, value } = event.target;
+    setEditingValuationForm((prev) =>
+      prev
+        ? {
+            ...prev,
+            [name]: value
+          }
+        : prev
+    );
+  }
+
+  async function handleSaveValuationEdit() {
+    if (!id || !editingValuationId || !editingValuationForm) {
+      return;
+    }
+    const valueNumber = Number(editingValuationForm.value);
+    if (!Number.isFinite(valueNumber) || valueNumber <= 0) {
+      setValuationHistoryError('Indiquez une valorisation valide.');
+      return;
+    }
+    const payload = {
+      date: editingValuationForm.date,
+      value: valueNumber
+    };
+    setIsUpdatingValuation(true);
+    setValuationHistoryError(null);
+    try {
+      await apiClient.put(`/values/${editingValuationId}`, payload);
+      await refreshValuations();
+      handleCancelValuationEdit();
+    } catch (err) {
+      setValuationHistoryError(getErrorMessage(err));
+    } finally {
+      setIsUpdatingValuation(false);
+    }
+  }
+
+  async function handleDeleteValuation(valuationId: string) {
+    if (!id) {
+      return;
+    }
+    const confirmed = window.confirm('Supprimer définitivement cette valorisation ?');
+    if (!confirmed) {
+      return;
+    }
+    setValuationHistoryError(null);
+    try {
+      await apiClient.delete(`/values/${valuationId}`);
+      if (editingValuationId === valuationId) {
+        handleCancelValuationEdit();
+      }
+      await refreshValuations();
+    } catch (err) {
+      setValuationHistoryError(getErrorMessage(err));
     }
   }
 
@@ -269,15 +353,6 @@ export function AccountDetailsPage() {
     return { delta, ratio };
   }, [latestValuation, previousValuation]);
 
-  const contributedCapital = useMemo(
-    () => valuations.reduce((sum, valuation) => sum + valuation.netFlows, 0),
-    [valuations]
-  );
-  const trackedCapital = useMemo(
-    () => contributedCapital + trackedOneTimeImpact,
-    [contributedCapital, trackedOneTimeImpact]
-  );
-
   const chartData = useMemo(() => {
     return valuations
       .map((item) => {
@@ -290,15 +365,6 @@ export function AccountDetailsPage() {
       .filter((point): point is { date: number; label: string; value: number } => Boolean(point))
       .sort((a, b) => (a.date > b.date ? 1 : -1));
   }, [valuations]);
-
-  const performanceVsCapital = useMemo(() => {
-    if (!latestValuation) {
-      return null;
-    }
-    const delta = latestValuation.value - trackedCapital;
-    const ratio = trackedCapital === 0 ? null : delta / trackedCapital;
-    return { delta, ratio };
-  }, [trackedCapital, latestValuation]);
 
   return (
     <section>
@@ -327,42 +393,9 @@ export function AccountDetailsPage() {
 
       <div className="stat-grid">
         <div className="card stat-card highlight-card">
-          <div className="stat-card-heading">Capital apporté</div>
-          <p>
-            {trackedCapital === 0 ? '—' : formatCurrency(trackedCapital, account?.currency)}
-          </p>
-          <small>
-            Valorisation : {formatCurrency(contributedCapital, account?.currency)}{' '}
-            {trackedOneTimeImpact !== 0 && (
-              <>
-                · Ops ponctuelles :{' '}
-                <span className={trackedOneTimeImpact >= 0 ? 'positive' : 'negative'}>
-                  {trackedOneTimeImpact >= 0 ? '+' : '-'}
-                  {formatCurrency(Math.abs(trackedOneTimeImpact), account?.currency)}
-                </span>
-              </>
-            )}
-          </small>
-        </div>
-        <div className="card stat-card">
-          <h4>Valeur actuelle</h4>
+          <div className="stat-card-heading">Valeur actuelle</div>
           <p>{latestValuation ? formatCurrency(latestValuation.value, account?.currency) : '—'}</p>
-          <small>Valorisé le {formatDate(latestValuation?.date)}</small>
-        </div>
-        <div className="card stat-card">
-          <h4>Performance vs capital</h4>
-          {performanceVsCapital ? (
-            <p className={performanceVsCapital.delta >= 0 ? 'positive' : 'negative'}>
-              {performanceVsCapital.delta >= 0 ? '+' : ''}
-              {formatCurrency(performanceVsCapital.delta, account?.currency)}
-              {typeof performanceVsCapital.ratio === 'number' && (
-                <span> ({(performanceVsCapital.ratio * 100).toFixed(1)}%)</span>
-              )}
-            </p>
-          ) : (
-            <p>—</p>
-          )}
-          <small>Différence entre la valeur actuelle et le capital apporté.</small>
+          <small>Dernière mise à jour le {formatDate(latestValuation?.date)}</small>
         </div>
         <div className="card stat-card">
           <h4>Variation récente</h4>
@@ -380,6 +413,11 @@ export function AccountDetailsPage() {
           <small>Par rapport à la précédente valorisation enregistrée.</small>
         </div>
         <div className="card stat-card">
+          <h4>Historique suivi</h4>
+          <p>{valuations.length === 0 ? '—' : valuations.length}</p>
+          <small>{valuations.length <= 1 ? 'Ajoute plusieurs points pour comparer.' : 'Entrées enregistrées.'}</small>
+        </div>
+        <div className="card stat-card">
           <h4>Flux planifiés</h4>
           <p className={monthlyFlow >= 0 ? 'positive' : 'negative'}>
             {monthlyFlow >= 0 ? '+' : ''}
@@ -389,86 +427,66 @@ export function AccountDetailsPage() {
         </div>
       </div>
 
-      <div className="grid detail-grid valuation-layout">
-        <div className="valuation-side-stack">
-          <div className="card valuation-explainer">
-            <div className="card-header">
-              <div>
-                <h3>Comprendre les valorisations</h3>
-                <p>
-                  Chaque valorisation fige la valeur du compte à une date donnée et te permet de dissocier ce que tu as
-                  réellement apporté des gains ou pertes de marché.
-                </p>
-              </div>
+      <div className="grid valuation-layout-grid">
+        <div className="card form-card valuation-form-card">
+          <div className="card-header">
+            <div>
+              <h3>Ajouter une valorisation</h3>
+              <p>Mets à jour la valeur du compte pour suivre ton patrimoine.</p>
             </div>
-            <ul>
-              <li>
-                <strong>Valeur</strong> : la valeur constatée ce jour-là.
-              </li>
-              <li>
-                <strong>Flux nets</strong> : les versements ou retraits effectués depuis la dernière valorisation. Ils
-                alimentent le capital apporté.
-              </li>
-              <li>
-                Un graphique retrace ensuite l’évolution pour nourrir le tableau de bord global.
-              </li>
-            </ul>
           </div>
-          <div className="card form-card valuation-form-card">
-            <div className="card-header">
-              <div>
-                <h3>Ajouter une valorisation</h3>
-                <p>Mets à jour la valeur du compte pour suivre ton patrimoine.</p>
-              </div>
+          <form onSubmit={handleValuationSubmit} className="form-grid">
+            <div>
+              <label htmlFor="valuation-date">Date</label>
+              <input
+                id="valuation-date"
+                name="date"
+                type="date"
+                value={valuationForm.date}
+                onChange={handleValuationChange}
+              />
             </div>
-            <form onSubmit={handleValuationSubmit} className="form-grid">
-              <div>
-                <label htmlFor="valuation-date">Date</label>
-                <input
-                  id="valuation-date"
-                  name="date"
-                  type="date"
-                  value={valuationForm.date}
-                  onChange={handleValuationChange}
-                />
-              </div>
-              <div>
-                <label htmlFor="valuation-value">Valeur</label>
-                <input
-                  id="valuation-value"
-                  name="value"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={valuationForm.value}
-                  onChange={handleValuationChange}
-                  required
-                />
-              </div>
-              <div>
-                <label htmlFor="valuation-netflows">Flux nets (capital)</label>
-                <input
-                  id="valuation-netflows"
-                  name="netFlows"
-                  type="number"
-                  step="0.01"
-                  value={valuationForm.netFlows}
-                  onChange={handleValuationChange}
-                />
-                <small className="form-hint">
-                  Indique ici le capital injecté ou retiré depuis la précédente valorisation.
-                </small>
-              </div>
-              {valuationError && <p className="form-error">{valuationError}</p>}
-              <div className="form-actions">
-                <button type="submit" className="primary" disabled={isSavingValuation}>
-                  {isSavingValuation ? 'Enregistrement…' : 'Enregistrer la valorisation'}
-                </button>
-              </div>
-            </form>
-          </div>
+            <div>
+              <label htmlFor="valuation-value">Valeur</label>
+              <input
+                id="valuation-value"
+                name="value"
+                type="number"
+                min="0"
+                step="0.01"
+                value={valuationForm.value}
+                onChange={handleValuationChange}
+                required
+              />
+            </div>
+            {valuationError && <p className="form-error">{valuationError}</p>}
+            <div className="form-actions">
+              <button type="submit" className="primary" disabled={isSavingValuation}>
+                {isSavingValuation ? 'Enregistrement…' : 'Enregistrer la valorisation'}
+              </button>
+            </div>
+          </form>
         </div>
-        <div className="card chart-card valuation-chart-card">
+        <div className="card valuation-explainer">
+          <div className="card-header">
+            <div>
+              <h3>Mode d’emploi</h3>
+              <p>Chaque valorisation fige simplement la valeur totale du compte à une date donnée.</p>
+            </div>
+          </div>
+          <ul>
+            <li>
+              Concentre-toi uniquement sur la valeur du compte : les versements et retraits sont déjà suivis dans la
+              section « Versements & opérations ».
+            </li>
+            <li>Ajoute une nouvelle valorisation quand tu veux corriger ou actualiser l’historique.</li>
+            <li>Le graphique ci-dessous se met automatiquement à jour pour illustrer la progression.</li>
+          </ul>
+          <p className="valuation-note">
+            Tu t’es trompé sur une date ou un montant ? Modifie ou supprime l’entrée concernée dans l’historique détaillé.
+          </p>
+        </div>
+        <div className="card chart-card valuation-chart-card full-width-card">
           <div className="card-header">
             <h3>Historique des valorisations</h3>
           </div>
@@ -491,8 +509,7 @@ export function AccountDetailsPage() {
             </ResponsiveContainer>
           ) : (
             <p className="chart-placeholder">
-              Aucune valorisation pour le moment. Ajoute une valeur pour alimenter le graphique et séparer capital et
-              performance.
+              Aucune valorisation pour le moment. Ajoute une valeur pour alimenter le graphique et suivre ta progression.
             </p>
           )}
         </div>
@@ -504,23 +521,84 @@ export function AccountDetailsPage() {
             <h3>Historique détaillé</h3>
             <span className="pill">{valuations.length} entrée(s)</span>
           </div>
+          {valuationHistoryError && <p className="form-error valuation-table-error">{valuationHistoryError}</p>}
           {valuations.length > 0 ? (
             <table className="data-table">
               <thead>
                 <tr>
                   <th>Date</th>
                   <th>Valeur</th>
-                  <th>Flux nets</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {valuations.map((valuation) => (
-                  <tr key={valuation.id}>
-                    <td>{formatDate(valuation.date)}</td>
-                    <td>{formatCurrency(valuation.value, account?.currency)}</td>
-                    <td>{formatCurrency(valuation.netFlows, account?.currency)}</td>
-                  </tr>
-                ))}
+                {valuations.map((valuation) => {
+                  const isEditing = editingValuationId === valuation.id;
+                  return (
+                    <tr key={valuation.id}>
+                      <td>
+                        {isEditing ? (
+                          <input
+                            type="date"
+                            name="date"
+                            value={editingValuationForm?.date ?? valuation.date}
+                            onChange={handleValuationEditChange}
+                          />
+                        ) : (
+                          formatDate(valuation.date)
+                        )}
+                      </td>
+                      <td>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            name="value"
+                            min="0"
+                            step="0.01"
+                            value={editingValuationForm?.value ?? valuation.value.toString()}
+                            onChange={handleValuationEditChange}
+                          />
+                        ) : (
+                          formatCurrency(valuation.value, account?.currency)
+                        )}
+                      </td>
+                      <td className="valuation-actions">
+                        {isEditing ? (
+                          <>
+                            <button
+                              type="button"
+                              className="primary"
+                              onClick={handleSaveValuationEdit}
+                              disabled={isUpdatingValuation}
+                            >
+                              {isUpdatingValuation ? 'Sauvegarde…' : 'Enregistrer'}
+                            </button>
+                            <button type="button" className="tertiary" onClick={handleCancelValuationEdit}>
+                              Annuler
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className="tertiary"
+                              onClick={() => handleStartValuationEdit(valuation)}
+                            >
+                              Modifier
+                            </button>
+                            <button
+                              type="button"
+                              className="tertiary danger"
+                              onClick={() => handleDeleteValuation(valuation.id)}
+                            >
+                              Supprimer
+                            </button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           ) : (
