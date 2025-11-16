@@ -167,6 +167,39 @@ button.secondary {
   color: #fecaca;
 }
 
+.stat-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-bottom: 1.5rem;
+}
+
+.stat-card h4 {
+  margin: 0 0 0.25rem;
+  font-size: 0.95rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.stat-card p {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
+.stat-card small {
+  display: block;
+  margin-top: 0.35rem;
+  color: #94a3b8;
+}
+
+.chart-placeholder {
+  margin: 0;
+  color: #94a3b8;
+  font-style: italic;
+}
+
 @media (max-width: 900px) {
   .app {
     grid-template-columns: 1fr;

@@ -24,6 +24,16 @@ type AccountRow = {
   value: string | null;
 };
 
+type NetWorthRow = {
+  date: string;
+  total_value: string | null;
+};
+
+type AllocationRow = {
+  type: string;
+  total_value: string | null;
+};
+
 const ACCOUNT_WITH_VALUE_QUERY = `
   SELECT
     a.id,
@@ -39,6 +49,13 @@ const ACCOUNT_WITH_VALUE_QUERY = `
     ORDER BY av.date DESC, av.created_at DESC
     LIMIT 1
   ) AS latest_values ON TRUE
+`;
+
+const ALLOCATION_BY_TYPE_QUERY = `
+  SELECT type, SUM(value) AS total_value
+  FROM (${ACCOUNT_WITH_VALUE_QUERY}) account_summaries
+  GROUP BY type
+  ORDER BY type ASC
 `;
 
 function mapAccountRow(row: AccountRow) {
@@ -65,6 +82,45 @@ accountsRouter.get('/', async (_req, res, next) => {
   try {
     const { rows } = await pool.query<AccountRow>(`${ACCOUNT_WITH_VALUE_QUERY} ORDER BY a.created_at DESC`);
     res.json({ data: rows.map(mapAccountRow) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+accountsRouter.get('/insights', async (_req, res, next) => {
+  try {
+    const [accountsResult, historyResult, allocationResult] = await Promise.all([
+      pool.query<AccountRow>(`${ACCOUNT_WITH_VALUE_QUERY} ORDER BY a.name ASC`),
+      pool.query<NetWorthRow>(
+        'SELECT date, SUM(value) AS total_value FROM account_values GROUP BY date ORDER BY date ASC'
+      ),
+      pool.query<AllocationRow>(ALLOCATION_BY_TYPE_QUERY)
+    ]);
+
+    const accounts = accountsResult.rows.map(mapAccountRow);
+    const netWorthHistory = historyResult.rows.map((row) => ({
+      date: row.date,
+      value: Number(row.total_value ?? 0)
+    }));
+    const allocationByType = allocationResult.rows.map((row) => ({
+      type: row.type,
+      value: Number(row.total_value ?? 0)
+    }));
+    const totalValue = accounts.reduce((sum, account) => sum + account.value, 0);
+    const lastUpdated = netWorthHistory.length > 0 ? netWorthHistory[netWorthHistory.length - 1]?.date ?? null : null;
+
+    res.json({
+      data: {
+        summary: {
+          totalValue,
+          accountCount: accounts.length,
+          lastUpdated
+        },
+        netWorthHistory,
+        allocationByAccount: accounts,
+        allocationByType
+      }
+    });
   } catch (error) {
     next(error);
   }
