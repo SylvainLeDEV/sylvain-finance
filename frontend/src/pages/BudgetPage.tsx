@@ -1,5 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+
+import { apiClient } from '../utils/apiClient';
+import {
+  ACTIONS_STORAGE_KEY,
+  type AccountContribution,
+  readStoredActions
+} from '../utils/accountActions';
 
 type Envelope = {
   id: string;
@@ -14,6 +21,18 @@ type InvestmentTarget = {
   target: number;
   monthly: number;
   comment: string;
+};
+
+type AccountSummary = {
+  id: string;
+  name: string;
+  currency: string;
+};
+
+type MonthlyContributionDetail = AccountContribution & {
+  accountId: string;
+  accountName: string;
+  currency: string;
 };
 
 const initialEnvelopes: Envelope[] = [
@@ -43,13 +62,98 @@ export function BudgetPage() {
   const [netIncome, setNetIncome] = useState(3500);
   const [envelopes, setEnvelopes] = useState<Envelope[]>(initialEnvelopes);
   const [investmentTargets, setInvestmentTargets] = useState<InvestmentTarget[]>(initialInvestmentTargets);
+  const [accounts, setAccounts] = useState<AccountSummary[]>([]);
+  const [accountActions, setAccountActions] = useState<Record<string, AccountContribution[]>>(
+    () => readStoredActions()
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchAccounts = async () => {
+      try {
+        const response = await apiClient.get<{ data: AccountSummary[] }>('/accounts');
+        if (isMounted) {
+          setAccounts(response.data.data);
+        }
+      } catch {
+        // silently ignore, budget view still works with stored contributions
+      }
+    };
+    void fetchAccounts();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === ACTIONS_STORAGE_KEY) {
+        setAccountActions(readStoredActions());
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
+
+  const monthlyContributionFlow = useMemo(() => {
+    return Object.values(accountActions).reduce((sum, contributions) => {
+      if (!contributions) {
+        return sum;
+      }
+      const monthlySum = contributions
+        .filter((contribution) => contribution.cadence === 'monthly')
+        .reduce(
+          (subTotal, contribution) =>
+            subTotal + (contribution.kind === 'withdrawal' ? -contribution.amount : contribution.amount),
+          0
+        );
+      return sum + monthlySum;
+    }, 0);
+  }, [accountActions]);
+
+  const monthlyContributionDetails = useMemo(() => {
+    const accountIndex = accounts.reduce<Record<string, AccountSummary>>((acc, account) => {
+      acc[account.id] = account;
+      return acc;
+    }, {});
+    return Object.entries(accountActions).reduce<MonthlyContributionDetail[]>((acc, [accountId, contributions]) => {
+      if (!contributions) {
+        return acc;
+      }
+      const meta = accountIndex[accountId];
+      const mapped = contributions
+        .filter((contribution) => contribution.cadence === 'monthly')
+        .map((contribution) => ({
+          ...contribution,
+          accountId,
+          accountName: meta?.name ?? 'Compte non identifié',
+          currency: meta?.currency ?? 'EUR'
+        }));
+      return [...acc, ...mapped];
+    }, []);
+  }, [accountActions, accounts]);
+
+  const sortedMonthlyContributionDetails = useMemo(() => {
+    return [...monthlyContributionDetails].sort((a, b) => {
+      if (a.accountName === b.accountName) {
+        return a.label.localeCompare(b.label);
+      }
+      return a.accountName.localeCompare(b.accountName);
+    });
+  }, [monthlyContributionDetails]);
 
   const totals = useMemo(() => {
     const totalEnvelopes = envelopes.reduce((acc, envelope) => acc + envelope.amount, 0);
-    const investable = netIncome - totalEnvelopes;
+    const investableBeforeTrackedPlans = netIncome - totalEnvelopes;
+    const investableAfterPlans = investableBeforeTrackedPlans - monthlyContributionFlow;
     const coverage = netIncome === 0 ? 0 : (totalEnvelopes / netIncome) * 100;
-    return { totalEnvelopes, investable, coverage };
-  }, [envelopes, netIncome]);
+    return { totalEnvelopes, coverage, investableBeforeTrackedPlans, investableAfterPlans };
+  }, [envelopes, netIncome, monthlyContributionFlow]);
 
   const handleEnvelopeChange = (id: string, field: 'category' | 'amount' | 'note', value: string) => {
     setEnvelopes((prev) =>
@@ -134,12 +238,22 @@ export function BudgetPage() {
           <p>{totals.totalEnvelopes.toLocaleString('fr-FR')} €</p>
           <small>{totals.coverage.toFixed(1)} % de vos revenus</small>
         </div>
-        <div className={`card stat-card ${totals.investable >= 0 ? '' : 'warning-card'}`}>
+        <div className="card stat-card">
+          <h4>Versements mensuels suivis</h4>
+          <p>
+            {monthlyContributionFlow.toLocaleString('fr-FR', {
+              style: 'currency',
+              currency: 'EUR'
+            })}
+          </p>
+          <small>Flux net programmé sur vos comptes</small>
+        </div>
+        <div className={`card stat-card ${totals.investableAfterPlans >= 0 ? '' : 'warning-card'}`}>
           <h4>Reste à investir</h4>
-          <p>{totals.investable.toLocaleString('fr-FR')} €</p>
+          <p>{totals.investableAfterPlans.toLocaleString('fr-FR')} €</p>
           <small>
-            {totals.investable >= 0
-              ? 'Disponible après dépenses connues'
+            {totals.investableAfterPlans >= 0
+              ? `Après dépenses et versements (${monthlyContributionFlow.toLocaleString('fr-FR')} €/mois)`
               : 'Vous dépassez votre salaire net'}
           </small>
         </div>
@@ -194,12 +308,33 @@ export function BudgetPage() {
               <input type="text" value={`${totals.coverage.toFixed(1)} %`} readOnly />
             </label>
             <label>
-              Capacité théorique
-              <input type="text" value={`${totals.investable.toLocaleString('fr-FR')} €`} readOnly />
+              Capacité après enveloppes
+              <input
+                type="text"
+                value={`${totals.investableBeforeTrackedPlans.toLocaleString('fr-FR')} €`}
+                readOnly
+              />
+            </label>
+            <label>
+              Versements suivis
+              <input
+                type="text"
+                value={`${monthlyContributionFlow.toLocaleString('fr-FR')} €/mois`}
+                readOnly
+              />
+            </label>
+            <label>
+              Reste après versements
+              <input
+                type="text"
+                value={`${totals.investableAfterPlans.toLocaleString('fr-FR')} €`}
+                readOnly
+              />
             </label>
             <p className="form-hint span-2">
               Ajoutez autant d&apos;enveloppes que nécessaire pour couvrir vos dépenses fixes,
-              variables ou projets personnels. Le reste disponible est calculé automatiquement.
+              variables ou projets personnels. Les versements suivis depuis vos comptes sont
+              également pris en compte dans votre reste disponible.
             </p>
           </div>
         </div>
@@ -346,6 +481,52 @@ export function BudgetPage() {
           <button className="ghost-button" type="button" onClick={handleAddInvestmentTarget}>
             + Ajouter un support
           </button>
+        </div>
+        <div className="card table-card">
+          <div className="table-header">
+            <div>
+              <h3>Versements mensuels suivis</h3>
+              <p className="form-hint">
+                Visualisez vos montants programmés et l&apos;allocation par compte depuis la page comptes.
+              </p>
+            </div>
+          </div>
+          {sortedMonthlyContributionDetails.length > 0 ? (
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Compte</th>
+                  <th>Intitulé</th>
+                  <th>Flux mensuel</th>
+                  <th>Début</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedMonthlyContributionDetails.map((contribution) => (
+                  <tr key={contribution.id}>
+                    <td>{contribution.accountName}</td>
+                    <td>{contribution.label}</td>
+                    <td>
+                      <span className={`amount-pill ${contribution.kind}`}>
+                        {contribution.kind === 'withdrawal' ? '-' : '+'}
+                        {contribution.amount.toLocaleString('fr-FR', {
+                          style: 'currency',
+                          currency: contribution.currency
+                        })}
+                        /mois
+                      </span>
+                    </td>
+                    <td>{new Date(contribution.date).toLocaleDateString('fr-FR')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="chart-placeholder">
+              Aucun versement mensuel suivi pour l&apos;instant. Ajoutez-les depuis vos comptes pour
+              qu&apos;ils soient déduits de votre reste à investir.
+            </p>
+          )}
         </div>
       </div>
     </section>
