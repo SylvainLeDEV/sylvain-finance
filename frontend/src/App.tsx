@@ -1,5 +1,6 @@
 import { NavLink, Route, Routes } from 'react-router-dom';
 
+import { AccountDetailsPage } from './pages/AccountDetailsPage';
 import { AccountsPage } from './pages/AccountsPage';
 import { BudgetPage } from './pages/BudgetPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -21,6 +22,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/accounts" element={<AccountsPage />} />
+          <Route path="/accounts/:id" element={<AccountDetailsPage />} />
           <Route path="/budget" element={<BudgetPage />} />
         </Routes>
       </main>

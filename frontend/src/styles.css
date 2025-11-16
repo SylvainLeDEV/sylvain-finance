@@ -65,6 +65,12 @@ body {
   gap: 1rem;
 }
 
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
 .page-header h2 {
   margin: 0 0 0.25rem;
 }
@@ -358,10 +364,32 @@ body {
   gap: 0.5rem;
 }
 
+.ghost-button {
+  border-radius: 999px;
+  padding: 0.4rem 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: transparent;
+  color: inherit;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .account-cell {
   display: flex;
   gap: 0.5rem;
   align-items: center;
+}
+
+.account-link {
+  color: #f8fafc;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.account-link:hover {
+  color: #93c5fd;
 }
 
 .flow-pill {
@@ -385,20 +413,25 @@ body {
 }
 
 button.primary,
-button.secondary {
+button.secondary,
+a.primary,
+a.secondary {
   border: none;
   border-radius: 999px;
   padding: 0.5rem 1.25rem;
   cursor: pointer;
   font-weight: 600;
+  text-decoration: none;
 }
 
-button.primary {
+button.primary,
+a.primary {
   background: #3b82f6;
   color: #0f172a;
 }
 
-button.secondary {
+button.secondary,
+a.secondary {
   background: #475569;
   color: #e2e8f0;
 }
@@ -483,6 +516,14 @@ button.tertiary {
   gap: 0.5rem;
 }
 
+.cadence-tag {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.15);
+  color: #cbd5f5;
+}
+
 .amount-pill {
   border-radius: 999px;
   padding: 0.35rem 0.75rem;
@@ -496,6 +537,14 @@ button.tertiary {
 
 .amount-pill.withdrawal {
   background: rgba(248, 113, 113, 0.15);
+  color: #fecaca;
+}
+
+.positive {
+  color: #86efac;
+}
+
+.negative {
   color: #fecaca;
 }
 

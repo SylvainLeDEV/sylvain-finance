@@ -8,7 +8,17 @@ import {
   useState
 } from 'react';
 
+import { Link } from 'react-router-dom';
+
 import { apiClient } from '../utils/apiClient';
+import {
+  type AccountContribution,
+  type ContributionFormState,
+  createContributionDraft,
+  createLocalId,
+  persistStoredActions,
+  readStoredActions
+} from '../utils/accountActions';
 
 type Account = {
   id: string;
@@ -88,7 +98,7 @@ export function AccountsPage() {
     if (typeof window === 'undefined') {
       return;
     }
-    window.localStorage.setItem(ACTIONS_STORAGE_KEY, JSON.stringify(accountActions));
+    persistStoredActions(accountActions);
   }, [accountActions]);
 
   function openCreateForm() {
@@ -162,7 +172,8 @@ export function AccountsPage() {
       label: draft.label.trim(),
       amount: amountValue,
       kind: draft.kind,
-      date: draft.date || new Date().toISOString().slice(0, 10)
+      date: draft.date || new Date().toISOString().slice(0, 10),
+      cadence: draft.cadence
     };
     setAccountActions((prev) => {
       const existing = prev[accountId] ?? [];
@@ -175,7 +186,8 @@ export function AccountsPage() {
         label: '',
         amount: '',
         date: draft.date,
-        kind: draft.kind
+        kind: draft.kind,
+        cadence: draft.cadence
       }
     }));
     setActionErrors((prev) => ({ ...prev, [accountId]: null }));
@@ -197,11 +209,13 @@ export function AccountsPage() {
     if (!contributions.length) {
       return 0;
     }
-    return contributions.reduce(
-      (sum, contribution) =>
-        sum + (contribution.kind === 'withdrawal' ? -contribution.amount : contribution.amount),
-      0
-    );
+    return contributions
+      .filter((contribution) => contribution.cadence === 'monthly')
+      .reduce(
+        (sum, contribution) =>
+          sum + (contribution.kind === 'withdrawal' ? -contribution.amount : contribution.amount),
+        0
+      );
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -365,14 +379,19 @@ export function AccountsPage() {
                     <tr className={isExpanded ? 'expanded-row' : undefined}>
                       <td>
                         <div className="account-cell">
-                          <strong>{account.name}</strong>
+                          <Link to={`/accounts/${account.id}`} className="account-link">
+                            {account.name}
+                          </Link>
                           <span className={`flow-pill ${monthlyFlow >= 0 ? 'positive' : 'negative'}`}>
-                            {monthlyFlow >= 0 ? '+' : ''}
-                            {monthlyFlow.toLocaleString('fr-FR', {
-                              style: 'currency',
-                              currency: account.currency
-                            })}
-                            /mois
+                            Flux mensuel :
+                            <strong>
+                              {monthlyFlow >= 0 ? '+' : ''}
+                              {monthlyFlow.toLocaleString('fr-FR', {
+                                style: 'currency',
+                                currency: account.currency
+                              })}
+                              /mois
+                            </strong>
                           </span>
                         </div>
                       </td>
@@ -387,11 +406,14 @@ export function AccountsPage() {
                       <td>
                         <div className="row-actions">
                           <button type="button" className="tertiary" onClick={() => toggleAccountDetails(account.id)}>
-                            {isExpanded ? 'Masquer le suivi' : 'Suivre les actions'}
+                            {isExpanded ? 'Masquer le suivi' : 'Suivi & versements'}
                           </button>
                           <button type="button" className="secondary" onClick={() => openEditForm(account)}>
                             Modifier
                           </button>
+                          <Link to={`/accounts/${account.id}`} className="ghost-button">
+                            Ouvrir
+                          </Link>
                         </div>
                       </td>
                     </tr>
@@ -403,12 +425,12 @@ export function AccountsPage() {
                               <div>
                                 <h4>Suivi des actions</h4>
                                 <p>
-                                  Renseignez vos versements mensuels, retraits ou ajustements pour garder en mémoire
-                                  chaque mouvement.
+                                  Programmez vos versements récurrents et notez les opérations ponctuelles pour garder
+                                  une trace fidèle des mouvements.
                                 </p>
                               </div>
                               <div className={`flow-pill ${monthlyFlow >= 0 ? 'positive' : 'negative'}`}>
-                                Flux net suivi :
+                                Flux mensuel suivi :
                                 <strong>
                                   {monthlyFlow >= 0 ? '+' : ''}
                                   {monthlyFlow.toLocaleString('fr-FR', {
@@ -452,8 +474,20 @@ export function AccountsPage() {
                                   value={getContributionDraft(account.id).kind}
                                   onChange={(event) => handleContributionDraftChange(account.id, event)}
                                 >
-                                  <option value="deposit">Ajouter chaque mois</option>
-                                  <option value="withdrawal">Retirer chaque mois</option>
+                                  <option value="deposit">Ajouter</option>
+                                  <option value="withdrawal">Retirer</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label htmlFor={`cadence-${account.id}`}>Fréquence</label>
+                                <select
+                                  id={`cadence-${account.id}`}
+                                  name="cadence"
+                                  value={getContributionDraft(account.id).cadence}
+                                  onChange={(event) => handleContributionDraftChange(account.id, event)}
+                                >
+                                  <option value="monthly">Chaque mois</option>
+                                  <option value="one-time">Ponctuel</option>
                                 </select>
                               </div>
                               <div>
@@ -479,7 +513,8 @@ export function AccountsPage() {
                             <div className="timeline">
                               {contributions.length === 0 ? (
                                 <p className="chart-placeholder">
-                                  Aucun mouvement suivi pour l’instant. Ajoutez votre premier versement ou retrait mensuel.
+                                  Aucun mouvement suivi pour l’instant. Ajoutez votre premier versement récurrent ou une
+                                  opération ponctuelle.
                                 </p>
                               ) : (
                                 contributions.map((contribution) => (
@@ -488,7 +523,8 @@ export function AccountsPage() {
                                       <strong>{contribution.label}</strong>
                                       <p>
                                         {formatTimelineDate(contribution.date)} •{' '}
-                                        {contribution.kind === 'deposit' ? 'Versement' : 'Retrait'}
+                                        {contribution.kind === 'deposit' ? 'Versement' : 'Retrait'}{' '}
+                                        {contribution.cadence === 'monthly' ? 'mensuel' : 'ponctuel'}
                                       </p>
                                     </div>
                                     <div className="timeline-item-actions">
@@ -498,7 +534,10 @@ export function AccountsPage() {
                                           style: 'currency',
                                           currency: account.currency
                                         })}
-                                        /mois
+                                        {contribution.cadence === 'monthly' ? '/mois' : ''}
+                                      </span>
+                                      <span className="cadence-tag">
+                                        {contribution.cadence === 'monthly' ? 'Automatique' : 'Ponctuel'}
                                       </span>
                                       <button
                                         type="button"
@@ -536,41 +575,6 @@ function getErrorMessage(error: unknown): string {
   return 'Une erreur inattendue est survenue.';
 }
 
-function readStoredActions(): Record<string, AccountContribution[]> {
-  if (typeof window === 'undefined') {
-    return {};
-  }
-  try {
-    const raw = window.localStorage.getItem(ACTIONS_STORAGE_KEY);
-    if (!raw) {
-      return {};
-    }
-    const parsed = JSON.parse(raw) as Record<string, AccountContribution[]>;
-    if (parsed && typeof parsed === 'object') {
-      return parsed;
-    }
-  } catch {
-    // ignore corrupted data
-  }
-  return {};
-}
-
-function createLocalId() {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return Math.random().toString(36).slice(2, 10);
-}
-
-function createContributionDraft(): ContributionFormState {
-  return {
-    label: '',
-    amount: '',
-    date: new Date().toISOString().slice(0, 10),
-    kind: 'deposit'
-  };
-}
-
 function formatTimelineDate(value: string) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.valueOf())) {
@@ -578,3 +582,4 @@ function formatTimelineDate(value: string) {
   }
   return parsed.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' });
 }
+x

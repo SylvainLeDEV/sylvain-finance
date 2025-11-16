@@ -227,7 +227,10 @@ export function DashboardPage() {
               </LineChart>
             </ResponsiveContainer>
           ) : (
-            <p className="chart-placeholder">Aucune valorisation historique disponible.</p>
+            <p className="chart-placeholder">
+              Aucune valorisation historique disponible. Ajoutez une valorisation depuis la page d’un compte pour
+              alimenter ce graphique.
+            </p>
           )}
         </div>
         <div className="card chart-card">
