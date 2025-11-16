@@ -245,6 +245,17 @@ export function AccountDetailsPage() {
 
   const contributions = id ? accountActions[id] ?? [] : [];
   const monthlyFlow = useMemo(() => calculateFlow(contributions), [contributions]);
+  const trackedOneTimeImpact = useMemo(
+    () =>
+      contributions
+        .filter((contribution) => contribution.cadence === 'one-time')
+        .reduce(
+          (sum, contribution) =>
+            sum + (contribution.kind === 'withdrawal' ? -contribution.amount : contribution.amount),
+          0
+        ),
+    [contributions]
+  );
   const sortedValuations = useMemo(() => [...valuations].sort((a, b) => (a.date > b.date ? 1 : -1)), [valuations]);
   const latestValuation = sortedValuations[sortedValuations.length - 1];
   const previousValuation =
@@ -261,6 +272,10 @@ export function AccountDetailsPage() {
   const contributedCapital = useMemo(
     () => valuations.reduce((sum, valuation) => sum + valuation.netFlows, 0),
     [valuations]
+  );
+  const trackedCapital = useMemo(
+    () => contributedCapital + trackedOneTimeImpact,
+    [contributedCapital, trackedOneTimeImpact]
   );
 
   const chartData = useMemo(() => {
@@ -280,10 +295,10 @@ export function AccountDetailsPage() {
     if (!latestValuation) {
       return null;
     }
-    const delta = latestValuation.value - contributedCapital;
-    const ratio = contributedCapital === 0 ? null : delta / contributedCapital;
+    const delta = latestValuation.value - trackedCapital;
+    const ratio = trackedCapital === 0 ? null : delta / trackedCapital;
     return { delta, ratio };
-  }, [contributedCapital, latestValuation]);
+  }, [trackedCapital, latestValuation]);
 
   return (
     <section>
@@ -314,11 +329,20 @@ export function AccountDetailsPage() {
         <div className="card stat-card highlight-card">
           <div className="stat-card-heading">Capital apporté</div>
           <p>
-            {contributedCapital === 0
-              ? '—'
-              : formatCurrency(contributedCapital, account?.currency)}
+            {trackedCapital === 0 ? '—' : formatCurrency(trackedCapital, account?.currency)}
           </p>
-          <small>Somme cumulée des flux nets renseignés dans vos valorisations.</small>
+          <small>
+            Valorisation : {formatCurrency(contributedCapital, account?.currency)}{' '}
+            {trackedOneTimeImpact !== 0 && (
+              <>
+                · Ops ponctuelles :{' '}
+                <span className={trackedOneTimeImpact >= 0 ? 'positive' : 'negative'}>
+                  {trackedOneTimeImpact >= 0 ? '+' : '-'}
+                  {formatCurrency(Math.abs(trackedOneTimeImpact), account?.currency)}
+                </span>
+              </>
+            )}
+          </small>
         </div>
         <div className="card stat-card">
           <h4>Valeur actuelle</h4>
@@ -521,6 +545,15 @@ export function AccountDetailsPage() {
                 {formatCurrency(monthlyFlow, account?.currency)} /mois
               </strong>
             </div>
+            {trackedOneTimeImpact !== 0 && (
+              <div className={`flow-pill ${trackedOneTimeImpact >= 0 ? 'positive' : 'negative'}`}>
+                Impact ponctuel suivi :
+                <strong>
+                  {trackedOneTimeImpact >= 0 ? '+' : '-'}
+                  {formatCurrency(Math.abs(trackedOneTimeImpact), account?.currency)}
+                </strong>
+              </div>
+            )}
           </div>
           <div className="action-form">
             <div>
