@@ -46,6 +46,22 @@ function formatTimelineDate(value: string) {
   return parsed.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' });
 }
 
+function formatChartTick(value: number | string) {
+  const parsed = typeof value === 'number' ? new Date(value) : new Date(value);
+  if (Number.isNaN(parsed.valueOf())) {
+    return typeof value === 'number' ? value.toString() : value;
+  }
+  return parsed.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' });
+}
+
+function formatChartLabel(value: number | string) {
+  const parsed = typeof value === 'number' ? new Date(value) : new Date(value);
+  if (Number.isNaN(parsed.valueOf())) {
+    return typeof value === 'number' ? value.toString() : value;
+  }
+  return parsed.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+}
+
 function getErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     return error.response?.data?.message ?? 'La requête a échoué.';
@@ -56,16 +72,6 @@ function getErrorMessage(error: unknown): string {
 function calculateFlow(contributions: AccountContribution[]) {
   return contributions
     .filter((contribution) => contribution.cadence === 'monthly')
-    .reduce(
-      (sum, contribution) =>
-        sum + (contribution.kind === 'withdrawal' ? -contribution.amount : contribution.amount),
-      0
-    );
-}
-
-function calculateOneTime(contributions: AccountContribution[]) {
-  return contributions
-    .filter((contribution) => contribution.cadence === 'one-time')
     .reduce(
       (sum, contribution) =>
         sum + (contribution.kind === 'withdrawal' ? -contribution.amount : contribution.amount),
@@ -239,7 +245,6 @@ export function AccountDetailsPage() {
 
   const contributions = id ? accountActions[id] ?? [] : [];
   const monthlyFlow = useMemo(() => calculateFlow(contributions), [contributions]);
-  const manualFlow = useMemo(() => calculateOneTime(contributions), [contributions]);
   const sortedValuations = useMemo(() => [...valuations].sort((a, b) => (a.date > b.date ? 1 : -1)), [valuations]);
   const latestValuation = sortedValuations[sortedValuations.length - 1];
   const previousValuation =
@@ -253,11 +258,32 @@ export function AccountDetailsPage() {
     return { delta, ratio };
   }, [latestValuation, previousValuation]);
 
+  const contributedCapital = useMemo(
+    () => valuations.reduce((sum, valuation) => sum + valuation.netFlows, 0),
+    [valuations]
+  );
+
   const chartData = useMemo(() => {
-    return [...valuations]
-      .sort((a, b) => (a.date > b.date ? 1 : -1))
-      .map((item) => ({ date: item.date, value: item.value }));
+    return valuations
+      .map((item) => {
+        const parsedDate = new Date(item.date);
+        if (Number.isNaN(parsedDate.valueOf())) {
+          return null;
+        }
+        return { date: parsedDate.valueOf(), label: item.date, value: item.value };
+      })
+      .filter((point): point is { date: number; label: string; value: number } => Boolean(point))
+      .sort((a, b) => (a.date > b.date ? 1 : -1));
   }, [valuations]);
+
+  const performanceVsCapital = useMemo(() => {
+    if (!latestValuation) {
+      return null;
+    }
+    const delta = latestValuation.value - contributedCapital;
+    const ratio = contributedCapital === 0 ? null : delta / contributedCapital;
+    return { delta, ratio };
+  }, [contributedCapital, latestValuation]);
 
   return (
     <section>
@@ -286,9 +312,33 @@ export function AccountDetailsPage() {
 
       <div className="stat-grid">
         <div className="card stat-card highlight-card">
-          <div className="stat-card-heading">Valeur actuelle</div>
+          <div className="stat-card-heading">Capital apporté</div>
+          <p>
+            {contributedCapital === 0
+              ? '—'
+              : formatCurrency(contributedCapital, account?.currency)}
+          </p>
+          <small>Somme cumulée des flux nets renseignés dans vos valorisations.</small>
+        </div>
+        <div className="card stat-card">
+          <h4>Valeur actuelle</h4>
           <p>{latestValuation ? formatCurrency(latestValuation.value, account?.currency) : '—'}</p>
           <small>Valorisé le {formatDate(latestValuation?.date)}</small>
+        </div>
+        <div className="card stat-card">
+          <h4>Performance vs capital</h4>
+          {performanceVsCapital ? (
+            <p className={performanceVsCapital.delta >= 0 ? 'positive' : 'negative'}>
+              {performanceVsCapital.delta >= 0 ? '+' : ''}
+              {formatCurrency(performanceVsCapital.delta, account?.currency)}
+              {typeof performanceVsCapital.ratio === 'number' && (
+                <span> ({(performanceVsCapital.ratio * 100).toFixed(1)}%)</span>
+              )}
+            </p>
+          ) : (
+            <p>—</p>
+          )}
+          <small>Différence entre la valeur actuelle et le capital apporté.</small>
         </div>
         <div className="card stat-card">
           <h4>Variation récente</h4>
@@ -313,89 +363,119 @@ export function AccountDetailsPage() {
           </p>
           <small>Somme des versements/retraits mensuels suivis.</small>
         </div>
-        <div className="card stat-card">
-          <h4>Dernières opérations ponctuelles</h4>
-          <p className={manualFlow >= 0 ? 'positive' : 'negative'}>
-            {manualFlow === 0 ? '—' : `${manualFlow >= 0 ? '+' : ''}${formatCurrency(manualFlow, account?.currency)}`}
-          </p>
-          <small>Total des opérations ponctuelles enregistrées.</small>
-        </div>
       </div>
 
-      <div className="grid detail-grid">
-        <div className="card chart-card span-2">
+      <div className="grid detail-grid valuation-layout">
+        <div className="valuation-side-stack">
+          <div className="card valuation-explainer">
+            <div className="card-header">
+              <div>
+                <h3>Comprendre les valorisations</h3>
+                <p>
+                  Chaque valorisation fige la valeur du compte à une date donnée et te permet de dissocier ce que tu as
+                  réellement apporté des gains ou pertes de marché.
+                </p>
+              </div>
+            </div>
+            <ul>
+              <li>
+                <strong>Valeur</strong> : la valeur constatée ce jour-là.
+              </li>
+              <li>
+                <strong>Flux nets</strong> : les versements ou retraits effectués depuis la dernière valorisation. Ils
+                alimentent le capital apporté.
+              </li>
+              <li>
+                Un graphique retrace ensuite l’évolution pour nourrir le tableau de bord global.
+              </li>
+            </ul>
+          </div>
+          <div className="card form-card valuation-form-card">
+            <div className="card-header">
+              <div>
+                <h3>Ajouter une valorisation</h3>
+                <p>Mets à jour la valeur du compte pour suivre ton patrimoine.</p>
+              </div>
+            </div>
+            <form onSubmit={handleValuationSubmit} className="form-grid">
+              <div>
+                <label htmlFor="valuation-date">Date</label>
+                <input
+                  id="valuation-date"
+                  name="date"
+                  type="date"
+                  value={valuationForm.date}
+                  onChange={handleValuationChange}
+                />
+              </div>
+              <div>
+                <label htmlFor="valuation-value">Valeur</label>
+                <input
+                  id="valuation-value"
+                  name="value"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={valuationForm.value}
+                  onChange={handleValuationChange}
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="valuation-netflows">Flux nets (capital)</label>
+                <input
+                  id="valuation-netflows"
+                  name="netFlows"
+                  type="number"
+                  step="0.01"
+                  value={valuationForm.netFlows}
+                  onChange={handleValuationChange}
+                />
+                <small className="form-hint">
+                  Indique ici le capital injecté ou retiré depuis la précédente valorisation.
+                </small>
+              </div>
+              {valuationError && <p className="form-error">{valuationError}</p>}
+              <div className="form-actions">
+                <button type="submit" className="primary" disabled={isSavingValuation}>
+                  {isSavingValuation ? 'Enregistrement…' : 'Enregistrer la valorisation'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+        <div className="card chart-card valuation-chart-card">
           <div className="card-header">
             <h3>Historique des valorisations</h3>
           </div>
           {chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={320}>
               <LineChart data={chartData} margin={{ top: 12, right: 24, bottom: 0, left: 0 }}>
-                <XAxis dataKey="date" tickFormatter={(value) => formatDate(value)} />
-                <YAxis tickFormatter={(value) => `${Math.round(value / 1000)}k €`} />
-                <Tooltip formatter={(value: number) => [formatCurrency(value, account?.currency), 'Valeur']} />
+                <XAxis
+                  dataKey="date"
+                  type="number"
+                  domain={['dataMin', 'dataMax']}
+                  tickFormatter={(value) => formatChartTick(value)}
+                />
+                <YAxis tickFormatter={(value) => formatCurrency(value, account?.currency)} width={90} />
+                <Tooltip
+                  labelFormatter={(value) => formatChartLabel(value)}
+                  formatter={(value: number) => [formatCurrency(value, account?.currency), 'Valeur']}
+                />
                 <Line type="monotone" dataKey="value" stroke="#4E79A7" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           ) : (
             <p className="chart-placeholder">
-              Aucune valorisation pour le moment. Ajoutez-en une pour alimenter le graphique et le tableau de bord global.
+              Aucune valorisation pour le moment. Ajoute une valeur pour alimenter le graphique et séparer capital et
+              performance.
             </p>
           )}
         </div>
-        <div className="card form-card">
-          <div className="card-header">
-            <div>
-              <h3>Ajouter une valorisation</h3>
-              <p>Mettez à jour la valeur du compte pour alimenter l’évolution du patrimoine.</p>
-            </div>
-          </div>
-          <form onSubmit={handleValuationSubmit} className="form-grid">
-            <div>
-              <label htmlFor="valuation-date">Date</label>
-              <input
-                id="valuation-date"
-                name="date"
-                type="date"
-                value={valuationForm.date}
-                onChange={handleValuationChange}
-              />
-            </div>
-            <div>
-              <label htmlFor="valuation-value">Valeur</label>
-              <input
-                id="valuation-value"
-                name="value"
-                type="number"
-                min="0"
-                step="0.01"
-                value={valuationForm.value}
-                onChange={handleValuationChange}
-                required
-              />
-            </div>
-            <div>
-              <label htmlFor="valuation-netflows">Flux nets (optionnel)</label>
-              <input
-                id="valuation-netflows"
-                name="netFlows"
-                type="number"
-                step="0.01"
-                value={valuationForm.netFlows}
-                onChange={handleValuationChange}
-              />
-            </div>
-            {valuationError && <p className="form-error">{valuationError}</p>}
-            <div className="form-actions">
-              <button type="submit" className="primary" disabled={isSavingValuation}>
-                {isSavingValuation ? 'Enregistrement…' : 'Enregistrer la valorisation'}
-              </button>
-            </div>
-          </form>
-        </div>
       </div>
 
-      <div className="grid detail-grid">
-        <div className="card table-card">
+      <div className="grid detail-grid history-grid">
+        <div className="card table-card full-width-card">
           <div className="card-header">
             <h3>Historique détaillé</h3>
             <span className="pill">{valuations.length} entrée(s)</span>
@@ -425,7 +505,7 @@ export function AccountDetailsPage() {
             </p>
           )}
         </div>
-        <div className="card account-details-card">
+        <div className="card account-details-card full-width-card operations-card">
           <div className="account-details-header">
             <div>
               <h3>Versements & opérations</h3>

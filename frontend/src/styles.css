@@ -349,6 +349,54 @@ body {
   grid-template-columns: minmax(280px, 360px) 1fr;
 }
 
+.valuation-layout {
+  align-items: start;
+}
+
+.valuation-side-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.valuation-explainer ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  color: #cbd5f5;
+}
+
+.valuation-explainer li {
+  line-height: 1.4;
+}
+
+.valuation-chart-card {
+  min-height: 360px;
+}
+
+.history-grid {
+  grid-template-columns: 1fr;
+}
+
+.full-width-card {
+  grid-column: 1 / -1;
+}
+
+.operations-card {
+  background: #0f172a;
+  border: 1px solid rgba(59, 130, 246, 0.18);
+}
+
+.valuation-form-card .form-grid small,
+.form-hint {
+  display: block;
+  margin-top: 0.35rem;
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+
 .account-ranking ul {
   list-style: none;
   padding: 0;
