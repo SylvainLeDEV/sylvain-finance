@@ -19,12 +19,14 @@ export function App() {
         </nav>
       </aside>
       <main className="content">
-        <Routes>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/accounts" element={<AccountsPage />} />
-          <Route path="/accounts/:id" element={<AccountDetailsPage />} />
-          <Route path="/budget" element={<BudgetPage />} />
-        </Routes>
+        <div className="page-shell">
+          <Routes>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/accounts" element={<AccountsPage />} />
+            <Route path="/accounts/:id" element={<AccountDetailsPage />} />
+            <Route path="/budget" element={<BudgetPage />} />
+          </Routes>
+        </div>
       </main>
     </div>
   );

@@ -17,6 +17,12 @@ import { apiClient } from '../utils/apiClient';
 const COLORS = ['#4E79A7', '#F28E2B', '#E15759', '#76B7B2', '#59A14F', '#EDC948'];
 
 const euroFormatter = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
+const compactEuroFormatter = new Intl.NumberFormat('fr-FR', {
+  style: 'currency',
+  currency: 'EUR',
+  notation: 'compact',
+  maximumFractionDigits: 1
+});
 const percentFormatter = new Intl.NumberFormat('fr-FR', {
   style: 'percent',
   minimumFractionDigits: 1,
@@ -33,6 +39,13 @@ function formatCurrency(value: number, currency = 'EUR') {
   } catch {
     return euroFormatter.format(value);
   }
+}
+
+function formatAxisCurrency(value: number) {
+  if (Math.abs(value) < 1000) {
+    return formatCurrency(value);
+  }
+  return compactEuroFormatter.format(value);
 }
 
 function getErrorMessage(error: unknown): string {
@@ -218,7 +231,7 @@ export function DashboardPage() {
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={netWorthHistory} margin={{ top: 12, right: 24, bottom: 0, left: 0 }}>
                 <XAxis dataKey="date" tickFormatter={(value) => formatDate(value)} />
-                <YAxis tickFormatter={(value) => `${Math.round(value / 1000)}k €`} />
+                <YAxis tickFormatter={(value) => formatAxisCurrency(value)} />
                 <Tooltip
                   labelFormatter={(value) => `Date: ${formatDate(value)}`}
                   formatter={(value: number) => [formatCurrency(value), 'Patrimoine']}
