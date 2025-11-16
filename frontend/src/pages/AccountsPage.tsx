@@ -1,5 +1,12 @@
 import axios from 'axios';
-import { type ChangeEvent, type FormEvent, useCallback, useEffect, useState } from 'react';
+import {
+  Fragment,
+  type ChangeEvent,
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useState
+} from 'react';
 
 import { apiClient } from '../utils/apiClient';
 
@@ -19,6 +26,21 @@ type FormState = {
   initialDate: string;
 };
 
+type AccountContribution = {
+  id: string;
+  label: string;
+  amount: number;
+  kind: 'deposit' | 'withdrawal';
+  date: string;
+};
+
+type ContributionFormState = {
+  label: string;
+  amount: string;
+  date: string;
+  kind: 'deposit' | 'withdrawal';
+};
+
 const emptyFormState: FormState = {
   name: '',
   type: '',
@@ -26,6 +48,8 @@ const emptyFormState: FormState = {
   initialValue: '',
   initialDate: ''
 };
+
+const ACTIONS_STORAGE_KEY = 'sy-finance:account-actions';
 
 export function AccountsPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -36,6 +60,12 @@ export function AccountsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  const [expandedAccountId, setExpandedAccountId] = useState<string | null>(null);
+  const [accountActions, setAccountActions] = useState<Record<string, AccountContribution[]>>(
+    () => readStoredActions()
+  );
+  const [actionDrafts, setActionDrafts] = useState<Record<string, ContributionFormState>>({});
+  const [actionErrors, setActionErrors] = useState<Record<string, string | null>>({});
 
   const fetchAccounts = useCallback(async () => {
     setLoading(true);
@@ -53,6 +83,13 @@ export function AccountsPage() {
   useEffect(() => {
     void fetchAccounts();
   }, [fetchAccounts]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    window.localStorage.setItem(ACTIONS_STORAGE_KEY, JSON.stringify(accountActions));
+  }, [accountActions]);
 
   function openCreateForm() {
     setFormState(emptyFormState);
@@ -84,6 +121,87 @@ export function AccountsPage() {
   function handleChange(event: ChangeEvent<HTMLInputElement>) {
     const { name, value } = event.target;
     setFormState((prev) => ({ ...prev, [name]: value }));
+  }
+
+  function toggleAccountDetails(accountId: string) {
+    setExpandedAccountId((current) => (current === accountId ? null : accountId));
+  }
+
+  function getContributionDraft(accountId: string): ContributionFormState {
+    return actionDrafts[accountId] ?? createContributionDraft();
+  }
+
+  function handleContributionDraftChange(
+    accountId: string,
+    event: ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) {
+    const { name, value } = event.target;
+    const field = name as keyof ContributionFormState;
+    setActionDrafts((prev) => {
+      const baseDraft = prev[accountId] ?? createContributionDraft();
+      return {
+        ...prev,
+        [accountId]: { ...baseDraft, [field]: value }
+      };
+    });
+  }
+
+  function handleAddContribution(accountId: string) {
+    const draft = getContributionDraft(accountId);
+    if (!draft.label.trim()) {
+      setActionErrors((prev) => ({ ...prev, [accountId]: 'Donnez un nom au mouvement.' }));
+      return;
+    }
+    const amountValue = Number(draft.amount);
+    if (!Number.isFinite(amountValue) || amountValue <= 0) {
+      setActionErrors((prev) => ({ ...prev, [accountId]: 'Indiquez un montant valide.' }));
+      return;
+    }
+    const contribution: AccountContribution = {
+      id: createLocalId(),
+      label: draft.label.trim(),
+      amount: amountValue,
+      kind: draft.kind,
+      date: draft.date || new Date().toISOString().slice(0, 10)
+    };
+    setAccountActions((prev) => {
+      const existing = prev[accountId] ?? [];
+      const updated = [contribution, ...existing].sort((a, b) => (a.date < b.date ? 1 : -1));
+      return { ...prev, [accountId]: updated };
+    });
+    setActionDrafts((prev) => ({
+      ...prev,
+      [accountId]: {
+        label: '',
+        amount: '',
+        date: draft.date,
+        kind: draft.kind
+      }
+    }));
+    setActionErrors((prev) => ({ ...prev, [accountId]: null }));
+  }
+
+  function handleRemoveContribution(accountId: string, contributionId: string) {
+    setAccountActions((prev) => {
+      const existing = prev[accountId] ?? [];
+      return { ...prev, [accountId]: existing.filter((item) => item.id !== contributionId) };
+    });
+  }
+
+  function getAccountContributions(accountId: string) {
+    return accountActions[accountId] ?? [];
+  }
+
+  function getAccountFlowSummary(accountId: string) {
+    const contributions = getAccountContributions(accountId);
+    if (!contributions.length) {
+      return 0;
+    }
+    return contributions.reduce(
+      (sum, contribution) =>
+        sum + (contribution.kind === 'withdrawal' ? -contribution.amount : contribution.amount),
+      0
+    );
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -226,37 +344,184 @@ export function AccountsPage() {
       {loading ? (
         <p>Chargement des comptes…</p>
       ) : hasAccounts ? (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Nom</th>
-              <th>Type</th>
-              <th>Devise</th>
-              <th>Valeur actuelle</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {accounts.map((account) => (
-              <tr key={account.id}>
-                <td>{account.name}</td>
-                <td>{account.type}</td>
-                <td>{account.currency}</td>
-                <td>
-                  {account.value.toLocaleString('fr-FR', {
-                    style: 'currency',
-                    currency: account.currency
-                  })}
-                </td>
-                <td>
-                  <button type="button" className="secondary" onClick={() => openEditForm(account)}>
-                    Modifier
-                  </button>
-                </td>
+        <div className="card table-card">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Nom</th>
+                <th>Type</th>
+                <th>Devise</th>
+                <th>Valeur actuelle</th>
+                <th>Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {accounts.map((account) => {
+                const isExpanded = expandedAccountId === account.id;
+                const contributions = getAccountContributions(account.id);
+                const monthlyFlow = getAccountFlowSummary(account.id);
+                return (
+                  <Fragment key={account.id}>
+                    <tr className={isExpanded ? 'expanded-row' : undefined}>
+                      <td>
+                        <div className="account-cell">
+                          <strong>{account.name}</strong>
+                          <span className={`flow-pill ${monthlyFlow >= 0 ? 'positive' : 'negative'}`}>
+                            {monthlyFlow >= 0 ? '+' : ''}
+                            {monthlyFlow.toLocaleString('fr-FR', {
+                              style: 'currency',
+                              currency: account.currency
+                            })}
+                            /mois
+                          </span>
+                        </div>
+                      </td>
+                      <td>{account.type}</td>
+                      <td>{account.currency}</td>
+                      <td>
+                        {account.value.toLocaleString('fr-FR', {
+                          style: 'currency',
+                          currency: account.currency
+                        })}
+                      </td>
+                      <td>
+                        <div className="row-actions">
+                          <button type="button" className="tertiary" onClick={() => toggleAccountDetails(account.id)}>
+                            {isExpanded ? 'Masquer le suivi' : 'Suivre les actions'}
+                          </button>
+                          <button type="button" className="secondary" onClick={() => openEditForm(account)}>
+                            Modifier
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr className="account-details-row">
+                        <td colSpan={5}>
+                          <div className="account-details-card">
+                            <div className="account-details-header">
+                              <div>
+                                <h4>Suivi des actions</h4>
+                                <p>
+                                  Renseignez vos versements mensuels, retraits ou ajustements pour garder en mémoire
+                                  chaque mouvement.
+                                </p>
+                              </div>
+                              <div className={`flow-pill ${monthlyFlow >= 0 ? 'positive' : 'negative'}`}>
+                                Flux net suivi :
+                                <strong>
+                                  {monthlyFlow >= 0 ? '+' : ''}
+                                  {monthlyFlow.toLocaleString('fr-FR', {
+                                    style: 'currency',
+                                    currency: account.currency
+                                  })}
+                                  /mois
+                                </strong>
+                              </div>
+                            </div>
+
+                            <div className="action-form">
+                              <div>
+                                <label htmlFor={`label-${account.id}`}>Intitulé</label>
+                                <input
+                                  id={`label-${account.id}`}
+                                  name="label"
+                                  type="text"
+                                  placeholder="Versement mensuel"
+                                  value={getContributionDraft(account.id).label}
+                                  onChange={(event) => handleContributionDraftChange(account.id, event)}
+                                />
+                              </div>
+                              <div>
+                                <label htmlFor={`amount-${account.id}`}>Montant</label>
+                                <input
+                                  id={`amount-${account.id}`}
+                                  name="amount"
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={getContributionDraft(account.id).amount}
+                                  onChange={(event) => handleContributionDraftChange(account.id, event)}
+                                />
+                              </div>
+                              <div>
+                                <label htmlFor={`kind-${account.id}`}>Action</label>
+                                <select
+                                  id={`kind-${account.id}`}
+                                  name="kind"
+                                  value={getContributionDraft(account.id).kind}
+                                  onChange={(event) => handleContributionDraftChange(account.id, event)}
+                                >
+                                  <option value="deposit">Ajouter chaque mois</option>
+                                  <option value="withdrawal">Retirer chaque mois</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label htmlFor={`date-${account.id}`}>Début</label>
+                                <input
+                                  id={`date-${account.id}`}
+                                  name="date"
+                                  type="date"
+                                  value={getContributionDraft(account.id).date}
+                                  onChange={(event) => handleContributionDraftChange(account.id, event)}
+                                />
+                              </div>
+                              <div className="form-actions">
+                                <button type="button" className="primary" onClick={() => handleAddContribution(account.id)}>
+                                  Ajouter au suivi
+                                </button>
+                              </div>
+                              {actionErrors[account.id] && (
+                                <p className="form-error">{actionErrors[account.id]}</p>
+                              )}
+                            </div>
+
+                            <div className="timeline">
+                              {contributions.length === 0 ? (
+                                <p className="chart-placeholder">
+                                  Aucun mouvement suivi pour l’instant. Ajoutez votre premier versement ou retrait mensuel.
+                                </p>
+                              ) : (
+                                contributions.map((contribution) => (
+                                  <div key={contribution.id} className="timeline-item">
+                                    <div>
+                                      <strong>{contribution.label}</strong>
+                                      <p>
+                                        {formatTimelineDate(contribution.date)} •{' '}
+                                        {contribution.kind === 'deposit' ? 'Versement' : 'Retrait'}
+                                      </p>
+                                    </div>
+                                    <div className="timeline-item-actions">
+                                      <span className={`amount-pill ${contribution.kind}`}>
+                                        {contribution.kind === 'deposit' ? '+' : '-'}
+                                        {contribution.amount.toLocaleString('fr-FR', {
+                                          style: 'currency',
+                                          currency: account.currency
+                                        })}
+                                        /mois
+                                      </span>
+                                      <button
+                                        type="button"
+                                        className="tertiary"
+                                        onClick={() => handleRemoveContribution(account.id, contribution.id)}
+                                      >
+                                        Supprimer
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <p>Aucun compte pour le moment. Ajoutez-en un pour commencer à suivre votre patrimoine.</p>
       )}
@@ -269,4 +534,47 @@ function getErrorMessage(error: unknown): string {
     return error.response?.data?.message ?? 'La requête a échoué.';
   }
   return 'Une erreur inattendue est survenue.';
+}
+
+function readStoredActions(): Record<string, AccountContribution[]> {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+  try {
+    const raw = window.localStorage.getItem(ACTIONS_STORAGE_KEY);
+    if (!raw) {
+      return {};
+    }
+    const parsed = JSON.parse(raw) as Record<string, AccountContribution[]>;
+    if (parsed && typeof parsed === 'object') {
+      return parsed;
+    }
+  } catch {
+    // ignore corrupted data
+  }
+  return {};
+}
+
+function createLocalId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return Math.random().toString(36).slice(2, 10);
+}
+
+function createContributionDraft(): ContributionFormState {
+  return {
+    label: '',
+    amount: '',
+    date: new Date().toISOString().slice(0, 10),
+    kind: 'deposit'
+  };
+}
+
+function formatTimelineDate(value: string) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.valueOf())) {
+    return value;
+  }
+  return parsed.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' });
 }
