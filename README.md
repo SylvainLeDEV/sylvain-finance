@@ -43,10 +43,7 @@ Docker Compose pour les environnements de développement et de production.
 Consultez [`db/schema.sql`](db/schema.sql) pour le schéma complet comprenant les tables
 `accounts`, `account_values`, `budget_categories`, `transactions` et `goals` ainsi qu'un
 trigger de mise à jour automatique. Le fichier est monté automatiquement dans PostgreSQL et
-exécuté lors du premier démarrage. L'API exécute également, à chaque démarrage, de petites
-migrations idempotentes (par exemple l'ajout de la colonne `login_url`) pour garantir que
-les nouvelles fonctionnalités fonctionnent même sur une base déjà existante. Pour rejouer
-manuellement le schéma complet :
+exécuté lors du premier démarrage. Pour rejouer manuellement le schéma complet :
 
 ```bash
 docker compose exec db psql -U postgres -d sy_finance -f /docker-entrypoint-initdb.d/schema.sql
