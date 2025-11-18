@@ -289,27 +289,53 @@ budgetRouter.put('/', async (req, res, next) => {
       budget.id
     ]);
     await client.query('DELETE FROM budget_envelopes WHERE budget_id = $1', [budget.id]);
-    await client.query('DELETE FROM budget_investment_targets WHERE budget_id = $1', [budget.id]);
 
-    const envelopeRows: EnvelopeRow[] = [];
+    const existingInvestmentsResult = await client.query<InvestmentRow>(
+      `SELECT id, product, target, monthly, allocation_percent, account_id, comment
+       FROM budget_investment_targets
+       WHERE budget_id = $1`,
+      [budget.id]
+    );
+    const existingInvestmentIds = new Set(existingInvestmentsResult.rows.map((row) => row.id));
+
     for (const envelope of payload.envelopes) {
-      const result = await client.query<EnvelopeRow>(
+      await client.query(
         `INSERT INTO budget_envelopes (budget_id, category, amount, note)
-         VALUES ($1, $2, $3, $4)
-         RETURNING id, category, amount, note`,
+         VALUES ($1, $2, $3, $4)`,
         [budget.id, envelope.category, envelope.amount, envelope.note ?? '']
       );
-      if (result.rows[0]) {
-        envelopeRows.push(result.rows[0]);
-      }
     }
 
-    const investmentRows: InvestmentRow[] = [];
+    const retainedInvestmentIds = new Set<string>();
     for (const investment of payload.investmentTargets) {
-      const result = await client.query<InvestmentRow>(
+      if (investment.id && existingInvestmentIds.has(investment.id)) {
+        await client.query(
+          `UPDATE budget_investment_targets
+           SET product = $1,
+               target = $2,
+               monthly = $3,
+               allocation_percent = $4,
+               account_id = $5,
+               comment = $6
+           WHERE id = $7 AND budget_id = $8`,
+          [
+            investment.product,
+            investment.target,
+            investment.monthly,
+            investment.allocationPercent,
+            investment.accountId ?? null,
+            investment.comment ?? '',
+            investment.id,
+            budget.id
+          ]
+        );
+        retainedInvestmentIds.add(investment.id);
+        continue;
+      }
+
+      await client.query(
         `INSERT INTO budget_investment_targets (budget_id, product, target, monthly, allocation_percent, account_id, comment)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING id, product, target, monthly, allocation_percent, account_id, comment`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
           budget.id,
           investment.product,
@@ -320,20 +346,40 @@ budgetRouter.put('/', async (req, res, next) => {
           investment.comment ?? ''
         ]
       );
-      if (result.rows[0]) {
-        investmentRows.push(result.rows[0]);
-      }
+    }
+
+    const idsToDelete = existingInvestmentsResult.rows
+      .map((row) => row.id)
+      .filter((id) => !retainedInvestmentIds.has(id));
+    if (idsToDelete.length > 0) {
+      await client.query(
+        `DELETE FROM budget_investment_targets WHERE budget_id = $1 AND id = ANY($2::uuid[])`,
+        [budget.id, idsToDelete]
+      );
+    }
+
+    const idsToDelete = existingInvestmentsResult.rows
+      .map((row) => row.id)
+      .filter((id) => !retainedInvestmentIds.has(id));
+    if (idsToDelete.length > 0) {
+      await client.query(
+        `DELETE FROM budget_investment_targets WHERE budget_id = $1 AND id = ANY($2::uuid[])`,
+        [budget.id, idsToDelete]
+      );
     }
 
     await client.query('COMMIT');
 
-    const refreshedBudget = await fetchBudgetRow();
+    const [refreshedBudget, refreshedDetails] = await Promise.all([
+      fetchBudgetRow(),
+      fetchBudgetDetails(budget.id)
+    ]);
+
     res.json({
       data: {
-        netIncome: payload.netIncome,
+        netIncome: Number(refreshedBudget?.net_income ?? payload.netIncome),
         updatedAt: refreshedBudget?.updated_at ?? budget.updated_at,
-        envelopes: envelopeRows.map(mapEnvelope),
-        investmentTargets: investmentRows.map(mapInvestment)
+        ...refreshedDetails
       }
     });
   } catch (error) {

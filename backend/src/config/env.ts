@@ -9,7 +9,7 @@ const envSchema = z.object({
   DATABASE_URL: z
     .string()
     .url()
-    .default('postgres://postgres:postgres@db:5432/sy_finance'),
+    .default('postgres://postgres:postgres@localhost:5432/sy_finance'),
   CORS_ORIGIN: z.string().default('*')
 });
 

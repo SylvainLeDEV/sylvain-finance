@@ -403,8 +403,291 @@ body {
 }
 
 .investment-table-wrapper {
-  margin: 1rem 1.5rem 0;
+  margin: 1rem 0 0;
   overflow-x: auto;
+  padding-bottom: 1rem;
+}
+
+.investment-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.investment-card-grid {
+  display: none;
+  margin-top: 1.5rem;
+  gap: 1rem;
+}
+
+.investment-card {
+  background: rgba(11, 18, 34, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 1rem;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.investment-card-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.investment-card-row label {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.investment-card-row input,
+.investment-card-row select {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: #0f172a;
+  color: inherit;
+}
+
+.investment-card-duo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+}
+
+.investment-card-duo label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.investment-card-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.investment-card-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.investment-table {
+  width: 100%;
+  min-width: 1100px;
+  table-layout: fixed;
+}
+
+.investment-table col.col-support {
+  width: 28%;
+}
+
+.investment-table col.col-target {
+  width: 14%;
+}
+
+.investment-table col.col-allocation,
+.investment-table col.col-manual {
+  width: 14%;
+}
+
+.investment-table col.col-auto {
+  width: 16%;
+}
+
+.investment-table col.col-notes {
+  width: 12%;
+}
+
+.investment-table col.col-actions {
+  width: 8%;
+}
+
+.investment-table th,
+.investment-table td {
+  vertical-align: top;
+  padding: 0.85rem 1rem;
+}
+
+.investment-table thead th {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.7rem;
+  color: #94a3b8;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.investment-table tbody tr + tr {
+  border-top: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.investment-table .inline-input,
+.investment-table .inline-select {
+  width: 100%;
+  margin-right: 0;
+}
+
+.investment-table .allocation-input {
+  width: 100%;
+}
+
+.table-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.table-field:last-of-type {
+  margin-bottom: 0;
+}
+
+.table-field label {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.action-cell {
+  text-align: right;
+}
+
+.icon-button {
+  background: rgba(248, 113, 113, 0.1);
+  color: #fecaca;
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  border-radius: 999px;
+  padding: 0.35rem 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.icon-button:hover {
+  background: rgba(248, 113, 113, 0.2);
+  border-color: rgba(248, 113, 113, 0.8);
+}
+
+.allocation-input-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.allocation-input {
+  width: 90px;
+}
+
+.allocation-result {
+  font-weight: 600;
+  color: #dbeafe;
+}
+
+.allocation-result.muted {
+  color: #94a3b8;
+}
+
+.allocation-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.allocation-summary .summary-label {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.allocation-summary .summary-value {
+  margin: 0.35rem 0 0;
+  font-size: 1.35rem;
+  font-weight: 600;
+}
+
+.allocation-summary .summary-value.warning {
+  color: #fbbf24;
+}
+
+.investment-card-grid {
+  display: none;
+  margin-top: 1.5rem;
+  gap: 1rem;
+}
+
+.investment-card {
+  background: rgba(11, 18, 34, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 1rem;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.investment-card-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.investment-card-row label {
+  font-size: 0.85rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.investment-card-row input,
+.investment-card-row select {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: #0f172a;
+  color: inherit;
+}
+
+.investment-card-duo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+}
+
+.investment-card-duo label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.investment-card-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.investment-card-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .investment-table {
@@ -904,10 +1187,61 @@ button.tertiary.danger:hover {
 .save-status {
   font-size: 0.85rem;
   color: #94a3b8;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .save-status.muted {
   color: rgba(148, 163, 184, 0.7);
+}
+
+.save-status.warning {
+  color: #fbbf24;
+}
+
+.save-status.success {
+  color: #86efac;
+}
+
+.save-status.error {
+  color: #fecaca;
+}
+
+.save-status.syncing {
+  color: #fbbf24;
+}
+
+.save-status .status-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: currentColor;
+  display: inline-flex;
+}
+
+.save-status.syncing .status-dot {
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.auto-save-note {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 0.5;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0.5;
+    transform: scale(0.9);
+  }
 }
 
 .error-banner {
@@ -1081,7 +1415,7 @@ button.tertiary.danger:hover {
   font-weight: 600;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1024px) {
   .app {
     grid-template-columns: 1fr;
   }
@@ -1090,10 +1424,34 @@ button.tertiary.danger:hover {
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+    gap: 1rem;
   }
 
-  .budget-actions {
+  .sidebar nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .content {
+    padding: 1.5rem;
+  }
+
+  .page-shell {
+    width: 100%;
+  }
+
+  .stat-grid {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+
+  .account-details-header {
+    flex-direction: column;
     align-items: flex-start;
+  }
+
+  .table-card {
+    overflow-x: auto;
   }
 
   .chart-card.span-2 {
@@ -1102,5 +1460,78 @@ button.tertiary.danger:hover {
 
   .detail-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .investment-table-wrapper {
+    display: none;
+  }
+
+  .investment-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .budget-actions {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .budget-actions button {
+    width: 100%;
+  }
+
+  .grid,
+  .form-grid,
+  .action-form {
+    grid-template-columns: 1fr;
+  }
+
+  .timeline-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .content {
+    padding: 1rem;
+  }
+
+  .allocation-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .table-card,
+  .card {
+    padding: 1rem;
+  }
+
+  .table-card .data-table {
+    display: block;
+    overflow-x: auto;
+  }
+
+  .investment-section-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .investment-section-header .ghost-button {
+    width: 100%;
+    text-align: center;
   }
 }

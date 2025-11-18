@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
@@ -101,6 +101,31 @@ function formatDateTime(value: string | null) {
   });
 }
 
+function fingerprintBudgetState(snapshot: {
+  netIncome: number;
+  envelopes: Envelope[];
+  investmentTargets: InvestmentTarget[];
+}) {
+  return JSON.stringify({
+    netIncome: snapshot.netIncome,
+    envelopes: snapshot.envelopes.map((envelope) => ({
+      id: envelope.id,
+      category: envelope.category,
+      amount: envelope.amount,
+      note: envelope.note
+    })),
+    investmentTargets: snapshot.investmentTargets.map((target) => ({
+      id: target.id,
+      product: target.product,
+      target: target.target,
+      monthly: target.monthly,
+      allocationPercent: target.allocationPercent,
+      accountId: target.accountId,
+      comment: target.comment
+    }))
+  });
+}
+
 export function BudgetPage() {
   const [netIncome, setNetIncome] = useState(3500);
   const [envelopes, setEnvelopes] = useState<Envelope[]>(initialEnvelopes);
@@ -113,6 +138,30 @@ export function BudgetPage() {
   const [isSavingBudget, setIsSavingBudget] = useState(false);
   const [budgetError, setBudgetError] = useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [isBudgetHydrated, setIsBudgetHydrated] = useState(false);
+  const [isAutoSaving, setIsAutoSaving] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastPersistedFingerprintRef = useRef<string>('');
+  const clearAutoSaveTimer = useCallback(() => {
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+      autoSaveTimeoutRef.current = null;
+    }
+  }, []);
+
+  const accountsById = useMemo(() => {
+    return accounts.reduce<Record<string, AccountSummary>>((acc, account) => {
+      acc[account.id] = account;
+      return acc;
+    }, {});
+  }, [accounts]);
+
+  useEffect(() => {
+    return () => {
+      clearAutoSaveTimer();
+    };
+  }, [clearAutoSaveTimer]);
 
   const accountsById = useMemo(() => {
     return accounts.reduce<Record<string, AccountSummary>>((acc, account) => {
@@ -163,11 +212,15 @@ export function BudgetPage() {
         if (!isMounted) {
           return;
         }
-        setNetIncome(response.data.data.netIncome);
-        setEnvelopes(response.data.data.envelopes);
-        setInvestmentTargets(response.data.data.investmentTargets);
-        setLastSavedAt(response.data.data.updatedAt);
+        const snapshot = response.data.data;
+        setNetIncome(snapshot.netIncome);
+        setEnvelopes(snapshot.envelopes);
+        setInvestmentTargets(snapshot.investmentTargets);
+        setLastSavedAt(snapshot.updatedAt);
         setBudgetError(null);
+        lastPersistedFingerprintRef.current = fingerprintBudgetState(snapshot);
+        setIsBudgetHydrated(true);
+        setHasUnsavedChanges(false);
       } catch {
         if (isMounted) {
           setBudgetError('Impossible de charger votre budget pour le moment.');
@@ -267,6 +320,20 @@ export function BudgetPage() {
     };
   }, [investmentTargets, investableAmount]);
 
+  const manualSaveDisabled = isLoadingBudget || isSavingBudget || isAutoSaving || !hasUnsavedChanges;
+  let saveStatusClass = 'save-status muted';
+  let saveStatusLabel = 'Aucune sauvegarde enregistrée';
+  if (isSavingBudget || isAutoSaving) {
+    saveStatusClass = 'save-status syncing';
+    saveStatusLabel = 'Sauvegarde automatique en cours…';
+  } else if (hasUnsavedChanges) {
+    saveStatusClass = 'save-status warning';
+    saveStatusLabel = 'Modifications en attente de sauvegarde';
+  } else if (lastSavedAt) {
+    saveStatusClass = 'save-status success';
+    saveStatusLabel = `Mis à jour ${formatDateTime(lastSavedAt)}`;
+  }
+
   const handleEnvelopeChange = (id: string, field: 'category' | 'amount' | 'note', value: string) => {
     setEnvelopes((prev) =>
       prev.map((envelope) =>
@@ -360,25 +427,76 @@ export function BudgetPage() {
     setInvestmentTargets((prev) => prev.filter((target) => target.id !== id));
   };
 
-  const handleSaveBudget = async () => {
-    setIsSavingBudget(true);
-    try {
-      const response = await apiClient.put<{ data: BudgetSnapshot }>('/budget', {
-        netIncome,
-        envelopes,
-        investmentTargets
-      });
-      setNetIncome(response.data.data.netIncome);
-      setEnvelopes(response.data.data.envelopes);
-      setInvestmentTargets(response.data.data.investmentTargets);
-      setLastSavedAt(response.data.data.updatedAt);
-      setBudgetError(null);
-    } catch {
-      setBudgetError('Impossible de sauvegarder vos changements. Réessayez dans un instant.');
-    } finally {
-      setIsSavingBudget(false);
-    }
+  const persistBudget = useCallback(
+    async (mode: 'manual' | 'auto' = 'manual') => {
+      if (mode === 'auto' && !isBudgetHydrated) {
+        return;
+      }
+      clearAutoSaveTimer();
+      if (mode === 'auto') {
+        setIsAutoSaving(true);
+      } else {
+        setIsSavingBudget(true);
+      }
+      try {
+        const response = await apiClient.put<{ data: BudgetSnapshot }>('/budget', {
+          netIncome,
+          envelopes,
+          investmentTargets
+        });
+        const snapshot = response.data.data;
+        lastPersistedFingerprintRef.current = fingerprintBudgetState(snapshot);
+        setNetIncome(snapshot.netIncome);
+        setEnvelopes(snapshot.envelopes);
+        setInvestmentTargets(snapshot.investmentTargets);
+        setLastSavedAt(snapshot.updatedAt);
+        setBudgetError(null);
+        setHasUnsavedChanges(false);
+        setIsBudgetHydrated(true);
+      } catch {
+        setBudgetError('Impossible de sauvegarder vos changements. Réessayez dans un instant.');
+      } finally {
+        if (mode === 'auto') {
+          setIsAutoSaving(false);
+        } else {
+          setIsSavingBudget(false);
+        }
+      }
+    },
+    [clearAutoSaveTimer, envelopes, investmentTargets, isBudgetHydrated, netIncome]
+  );
+
+  const handleSaveBudget = () => {
+    void persistBudget('manual');
   };
+
+  useEffect(() => {
+    if (!isBudgetHydrated) {
+      return;
+    }
+    const fingerprint = fingerprintBudgetState({
+      netIncome,
+      envelopes,
+      investmentTargets
+    });
+    if (fingerprint === lastPersistedFingerprintRef.current) {
+      return;
+    }
+    setHasUnsavedChanges(true);
+    autoSaveTimeoutRef.current = setTimeout(() => {
+      void persistBudget('auto');
+    }, 1500);
+    return () => {
+      clearAutoSaveTimer();
+    };
+  }, [
+    clearAutoSaveTimer,
+    envelopes,
+    investmentTargets,
+    isBudgetHydrated,
+    netIncome,
+    persistBudget
+  ]);
 
   return (
     <section className="budget-page">
@@ -395,16 +513,16 @@ export function BudgetPage() {
           <button
             className="primary"
             onClick={handleSaveBudget}
-            disabled={isLoadingBudget || isSavingBudget}
+            disabled={manualSaveDisabled}
             type="button"
           >
-            {isSavingBudget ? 'Enregistrement…' : 'Sauvegarder mon budget'}
+            {isSavingBudget ? 'Enregistrement…' : 'Sauvegarder maintenant'}
           </button>
-          {lastSavedAt ? (
-            <span className="save-status">Mis à jour {formatDateTime(lastSavedAt)}</span>
-          ) : (
-            <span className="save-status muted">Aucune sauvegarde enregistrée</span>
-          )}
+          <span className={saveStatusClass}>
+            <span className="status-dot" aria-hidden />
+            {saveStatusLabel}
+          </span>
+          <small className="auto-save-note">Sauvegarde automatique après chaque modification.</small>
         </div>
       </div>
 
@@ -476,11 +594,18 @@ export function BudgetPage() {
         </div>
 
         <div className="card budget-invest-card">
-          <h3>Plan d&apos;investissement mensuel</h3>
-          <p className="form-hint">
-            Définissez la part de vos revenus à orienter vers l&apos;investissement après dépenses
-            fixes et épargne de précaution.
-          </p>
+          <div className="investment-section-header">
+            <div>
+              <h3>Objectifs de placement par support</h3>
+              <p className="form-hint">
+                Définissez vos cibles mensuelles, rattachez-les à des comptes existants et laissez la
+                sauvegarde automatique suivre vos ajustements.
+              </p>
+            </div>
+            <button className="ghost-button" type="button" onClick={handleAddInvestmentTarget}>
+              + Ajouter un support
+            </button>
+          </div>
           <div className="form-grid">
             <label>
               Salaire net encaissé
@@ -793,6 +918,146 @@ export function BudgetPage() {
               </tbody>
             </table>
           </div>
+          <div className="investment-card-grid">
+            {investmentTargets.map((target) => {
+              const automaticAmount = target.accountId
+                ? automaticDepositsByAccount[target.accountId] ?? 0
+                : 0;
+              const hasInvestable = investableAmount > 0;
+              const allocationAmount = hasInvestable
+                ? (target.allocationPercent / 100) * investableAmount
+                : 0;
+              const targetAccount = target.accountId ? accountsById[target.accountId] : null;
+              return (
+                <article key={`${target.id}-card`} className="investment-card">
+                  <div className="investment-card-row">
+                    <label>Support</label>
+                    <input
+                      type="text"
+                      value={target.product}
+                      onChange={(event) =>
+                        handleInvestmentTargetChange(target.id, 'product', event.target.value)
+                      }
+                    />
+                  </div>
+                  <div className="investment-card-row">
+                    <label>Compte associé</label>
+                    <select
+                      value={target.accountId ?? ''}
+                      onChange={(event) =>
+                        handleInvestmentTargetChange(target.id, 'accountId', event.target.value)
+                      }
+                    >
+                      <option value="">Aucun compte relié</option>
+                      {accounts.map((account) => (
+                        <option key={account.id} value={account.id}>
+                          {account.name}
+                        </option>
+                      ))}
+                    </select>
+                    {targetAccount ? (
+                      <small className="table-hint">
+                        <Link className="table-link" to={`/accounts/${targetAccount.id}`}>
+                          Voir le compte
+                        </Link>
+                      </small>
+                    ) : null}
+                  </div>
+                  <div className="investment-card-duo">
+                    <label>
+                      Objectif total
+                      <input
+                        type="number"
+                        min={0}
+                        value={target.target}
+                        onChange={(event) =>
+                          handleInvestmentTargetChange(target.id, 'target', event.target.value)
+                        }
+                      />
+                    </label>
+                    <label>
+                      Pourcentage
+                      <div className="allocation-input-wrapper">
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={0.5}
+                          value={target.allocationPercent}
+                          onChange={(event) =>
+                            handleInvestmentTargetChange(
+                              target.id,
+                              'allocationPercent',
+                              event.target.value
+                            )
+                          }
+                        />
+                        %
+                      </div>
+                      <small className="table-hint">
+                        {hasInvestable
+                          ? `${allocationAmount.toLocaleString('fr-FR')} € projetés`
+                          : 'Définissez votre reste à investir'}
+                      </small>
+                    </label>
+                  </div>
+                  <div className="investment-card-row">
+                    <label>Montant mensuel</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={target.monthly}
+                      onChange={(event) =>
+                        handleInvestmentTargetChange(target.id, 'monthly', event.target.value)
+                      }
+                    />
+                    <small className="table-hint">
+                      {hasInvestable
+                        ? `${target.allocationPercent.toFixed(1)} % du reste à investir`
+                        : 'Renseignez votre capacité restante'}
+                    </small>
+                  </div>
+                  <div className="investment-card-row">
+                    <label>Suivi automatique</label>
+                    {target.accountId ? (
+                      <div className="investment-card-flow">
+                        <span className={`auto-flow-pill ${automaticAmount > 0 ? 'active' : ''}`}>
+                          {automaticAmount > 0
+                            ? `+${automaticAmount.toLocaleString('fr-FR')} €/mois`
+                            : 'Aucun flux suivi'}
+                        </span>
+                        <small>
+                          Total (auto + manuel) :{' '}
+                          {(automaticAmount + target.monthly).toLocaleString('fr-FR')} €/mois
+                        </small>
+                      </div>
+                    ) : (
+                      <span className="muted">Associez un compte pour voir les montants automatiques.</span>
+                    )}
+                  </div>
+                  <div className="investment-card-row">
+                    <label>Commentaires</label>
+                    <input
+                      type="text"
+                      value={target.comment}
+                      onChange={(event) =>
+                        handleInvestmentTargetChange(target.id, 'comment', event.target.value)
+                      }
+                    />
+                  </div>
+                  <div className="investment-card-actions">
+                    <button
+                      type="button"
+                      className="icon-button"
+                      onClick={() => handleRemoveInvestmentTarget(target.id)}
+                    >
+                      Supprimer ce support
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
           <div className="allocation-summary">
             <div>
               <p className="summary-label">Total allocation</p>
@@ -826,9 +1091,6 @@ export function BudgetPage() {
               <small>Disponible pour de nouveaux supports</small>
             </div>
           </div>
-          <button className="ghost-button" type="button" onClick={handleAddInvestmentTarget}>
-            + Ajouter un support
-          </button>
         </div>
         <div className="card table-card">
           <div className="table-header">
