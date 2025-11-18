@@ -21,6 +21,7 @@ type InvestmentTarget = {
   product: string;
   target: number;
   monthly: number;
+  allocationPercent: number;
   comment: string;
 };
 
@@ -53,9 +54,30 @@ const initialEnvelopes: Envelope[] = [
 ];
 
 const initialInvestmentTargets: InvestmentTarget[] = [
-  { id: 'pea', product: 'PEA - ETF Monde', target: 40000, monthly: 350, comment: 'Horizon 10 ans' },
-  { id: 'assurance-vie', product: 'Assurance-vie profil équilibré', target: 15000, monthly: 200, comment: 'Objectif vacances / projets' },
-  { id: 'crypto', product: 'Allocation crypto', target: 5000, monthly: 80, comment: 'Ticket spéculatif < 5 %' }
+  {
+    id: 'pea',
+    product: 'PEA - ETF Monde',
+    target: 40000,
+    monthly: 350,
+    allocationPercent: 50,
+    comment: 'Horizon 10 ans'
+  },
+  {
+    id: 'assurance-vie',
+    product: 'Assurance-vie profil équilibré',
+    target: 15000,
+    monthly: 200,
+    allocationPercent: 35,
+    comment: 'Objectif vacances / projets'
+  },
+  {
+    id: 'crypto',
+    product: 'Allocation crypto',
+    target: 5000,
+    monthly: 80,
+    allocationPercent: 15,
+    comment: 'Ticket spéculatif < 5 %'
+  }
 ];
 
 function formatDateTime(value: string | null) {
@@ -206,6 +228,25 @@ export function BudgetPage() {
     return { totalEnvelopes, coverage, investableBeforeTrackedPlans, investableAfterPlans };
   }, [envelopes, netIncome, monthlyContributionFlow]);
 
+  const investableAmount = Math.max(totals.investableAfterPlans, 0);
+
+  const allocationStats = useMemo(() => {
+    const amountById: Record<string, number> = {};
+    let totalPercent = 0;
+    for (const target of investmentTargets) {
+      const percent = target.allocationPercent ?? 0;
+      totalPercent += percent;
+      amountById[target.id] = investableAmount * (percent / 100);
+    }
+    const totalAmount = Object.values(amountById).reduce((sum, amount) => sum + amount, 0);
+    return {
+      amountById,
+      totalPercent,
+      totalAmount,
+      remainingAmount: Math.max(investableAmount - totalAmount, 0)
+    };
+  }, [investmentTargets, investableAmount]);
+
   const handleEnvelopeChange = (id: string, field: 'category' | 'amount' | 'note', value: string) => {
     setEnvelopes((prev) =>
       prev.map((envelope) =>
@@ -235,20 +276,30 @@ export function BudgetPage() {
     setEnvelopes((prev) => prev.filter((envelope) => envelope.id !== id));
   };
 
-  const handleInvestmentTargetChange = (
-    id: string,
-    field: keyof InvestmentTarget,
-    value: string
-  ) => {
+  const handleInvestmentTargetChange = (id: string, field: keyof InvestmentTarget, value: string) => {
     setInvestmentTargets((prev) =>
-      prev.map((target) =>
-        target.id === id
-          ? {
-              ...target,
-              [field]: field === 'target' || field === 'monthly' ? Number(value) || 0 : value
-            }
-          : target
-      )
+      prev.map((target) => {
+        if (target.id !== id) {
+          return target;
+        }
+        if (field === 'target' || field === 'monthly') {
+          return {
+            ...target,
+            [field]: Math.max(Number(value) || 0, 0)
+          };
+        }
+        if (field === 'allocationPercent') {
+          const parsed = Math.max(Math.min(Number(value) || 0, 100), 0);
+          return {
+            ...target,
+            allocationPercent: parsed
+          };
+        }
+        return {
+          ...target,
+          [field]: value
+        };
+      })
     );
   };
 
@@ -260,6 +311,7 @@ export function BudgetPage() {
         product: 'Nouveau support',
         target: 0,
         monthly: 0,
+        allocationPercent: 0,
         comment: ''
       }
     ]);
@@ -498,11 +550,12 @@ export function BudgetPage() {
       </div>
 
       <div className="grid budget-section-grid">
-        <div className="card">
+        <div className="card table-card investment-targets-card full-width-card">
           <h3>Objectifs de placement par support</h3>
           <p className="form-hint">
             Définissez le montant cible et l&apos;effort mensuel pour chaque produit (PEA, assurance-vie,
-            crypto, crowdfunding, etc.).
+            crypto, crowdfunding, etc.). Paramétrez aussi un pourcentage pour répartir votre reste à
+            investir.
           </p>
           <div className="investment-table-wrapper">
             <table className="data-table">
@@ -510,61 +563,117 @@ export function BudgetPage() {
                 <tr>
                   <th>Support</th>
                   <th>Objectif final</th>
+                  <th>Allocation (%)</th>
+                  <th>Montant sur reste à investir</th>
                   <th>Versement mensuel</th>
                   <th>Commentaire</th>
                 </tr>
               </thead>
               <tbody>
-                {investmentTargets.map((target) => (
-                  <tr key={target.id}>
-                    <td>
-                      <input
-                        className="inline-input"
-                        type="text"
-                        value={target.product}
-                        onChange={(event) =>
-                          handleInvestmentTargetChange(target.id, 'product', event.target.value)
-                        }
-                      />
-                    </td>
-                    <td>
-                      <input
-                        className="inline-input"
-                        type="number"
-                        min={0}
-                        value={target.target}
-                        onChange={(event) =>
-                          handleInvestmentTargetChange(target.id, 'target', event.target.value)
-                        }
-                      />
-                      €
-                    </td>
-                    <td>
-                      <input
-                        className="inline-input"
-                        type="number"
-                        min={0}
-                        value={target.monthly}
-                        onChange={(event) =>
-                          handleInvestmentTargetChange(target.id, 'monthly', event.target.value)
-                        }
-                      />
-                      €
-                    </td>
-                    <td>
-                      <input
-                        className="inline-input"
-                        type="text"
-                        value={target.comment}
-                        onChange={(event) =>
-                          handleInvestmentTargetChange(target.id, 'comment', event.target.value)
-                        }
-                      />
-                    </td>
-                  </tr>
-                ))}
+                {investmentTargets.map((target) => {
+                  const allocationAmount = allocationStats.amountById[target.id] ?? 0;
+                  const hasInvestable = investableAmount > 0;
+                  return (
+                    <tr key={target.id}>
+                      <td>
+                        <input
+                          className="inline-input"
+                          type="text"
+                          value={target.product}
+                          onChange={(event) =>
+                            handleInvestmentTargetChange(target.id, 'product', event.target.value)
+                          }
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="inline-input"
+                          type="number"
+                          min={0}
+                          value={target.target}
+                          onChange={(event) =>
+                            handleInvestmentTargetChange(target.id, 'target', event.target.value)
+                          }
+                        />
+                        €
+                      </td>
+                      <td>
+                        <div className="allocation-input-wrapper">
+                          <input
+                            className="inline-input allocation-input"
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={target.allocationPercent}
+                            onChange={(event) =>
+                              handleInvestmentTargetChange(
+                                target.id,
+                                'allocationPercent',
+                                event.target.value
+                              )
+                            }
+                          />
+                          %
+                        </div>
+                      </td>
+                      <td>
+                        <span className={`allocation-result ${hasInvestable ? '' : 'muted'}`}>
+                          {hasInvestable ? `${allocationAmount.toLocaleString('fr-FR')} €` : '—'}
+                        </span>
+                      </td>
+                      <td>
+                        <input
+                          className="inline-input"
+                          type="number"
+                          min={0}
+                          value={target.monthly}
+                          onChange={(event) =>
+                            handleInvestmentTargetChange(target.id, 'monthly', event.target.value)
+                          }
+                        />
+                        €
+                      </td>
+                      <td>
+                        <input
+                          className="inline-input"
+                          type="text"
+                          value={target.comment}
+                          onChange={(event) =>
+                            handleInvestmentTargetChange(target.id, 'comment', event.target.value)
+                          }
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+          </div>
+          <div className="allocation-summary">
+            <div>
+              <p className="summary-label">Total allocation</p>
+              <p
+                className={`summary-value ${allocationStats.totalPercent > 100 ? 'warning' : ''}`}
+              >
+                {allocationStats.totalPercent.toFixed(1)} %
+              </p>
+              <small>Somme des pourcentages définis</small>
+            </div>
+            <div>
+              <p className="summary-label">Montant distribué</p>
+              <p className="summary-value">
+                {allocationStats.totalAmount.toLocaleString('fr-FR')} € /{' '}
+                {investableAmount.toLocaleString('fr-FR')} €
+              </p>
+              <small>Projection basée sur votre reste à investir</small>
+            </div>
+            <div>
+              <p className="summary-label">Montant restant</p>
+              <p className="summary-value">
+                {allocationStats.remainingAmount.toLocaleString('fr-FR')} €
+              </p>
+              <small>Disponible pour de nouveaux supports</small>
+            </div>
           </div>
           <button className="ghost-button" type="button" onClick={handleAddInvestmentTarget}>
             + Ajouter un support

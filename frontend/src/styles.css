@@ -407,6 +407,51 @@ body {
   overflow-x: auto;
 }
 
+.allocation-input-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.allocation-input {
+  width: 90px;
+}
+
+.allocation-result {
+  font-weight: 600;
+  color: #dbeafe;
+}
+
+.allocation-result.muted {
+  color: #94a3b8;
+}
+
+.allocation-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.allocation-summary .summary-label {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.allocation-summary .summary-value {
+  margin: 0.35rem 0 0;
+  font-size: 1.35rem;
+  font-weight: 600;
+}
+
+.allocation-summary .summary-value.warning {
+  color: #fbbf24;
+}
+
 .detail-grid {
   margin-top: 2rem;
   grid-template-columns: minmax(280px, 360px) 1fr;

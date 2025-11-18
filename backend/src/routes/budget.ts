@@ -16,9 +16,27 @@ const DEFAULT_ENVELOPES = [
 ];
 
 const DEFAULT_INVESTMENTS = [
-  { product: 'PEA - ETF Monde', target: 40000, monthly: 350, comment: 'Horizon 10 ans' },
-  { product: 'Assurance-vie profil équilibré', target: 15000, monthly: 200, comment: 'Objectif vacances / projets' },
-  { product: 'Allocation crypto', target: 5000, monthly: 80, comment: 'Ticket spéculatif < 5 %' }
+  {
+    product: 'PEA - ETF Monde',
+    target: 40000,
+    monthly: 350,
+    allocationPercent: 50,
+    comment: 'Horizon 10 ans'
+  },
+  {
+    product: 'Assurance-vie profil équilibré',
+    target: 15000,
+    monthly: 200,
+    allocationPercent: 35,
+    comment: 'Objectif vacances / projets'
+  },
+  {
+    product: 'Allocation crypto',
+    target: 5000,
+    monthly: 80,
+    allocationPercent: 15,
+    comment: 'Ticket spéculatif < 5 %'
+  }
 ];
 
 type BudgetRow = QueryResultRow & {
@@ -39,6 +57,7 @@ type InvestmentRow = QueryResultRow & {
   product: string;
   target: string | null;
   monthly: string | null;
+  allocation_percent: string | null;
   comment: string | null;
 };
 
@@ -54,6 +73,7 @@ const investmentSchema = z.object({
   product: z.string().min(1),
   target: z.number().nonnegative(),
   monthly: z.number().nonnegative(),
+  allocationPercent: z.number().min(0).max(100).default(0),
   comment: z.string().optional().default('')
 });
 
@@ -92,9 +112,14 @@ async function ensureBudgetSchema() {
       product TEXT NOT NULL,
       target NUMERIC(18, 2) NOT NULL DEFAULT 0,
       monthly NUMERIC(18, 2) NOT NULL DEFAULT 0,
+      allocation_percent NUMERIC(5, 2) NOT NULL DEFAULT 0,
       comment TEXT DEFAULT '',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+  await pool.query(`
+    ALTER TABLE budget_investment_targets
+    ADD COLUMN IF NOT EXISTS allocation_percent NUMERIC(5, 2) NOT NULL DEFAULT 0
   `);
   await pool.query(`
     CREATE OR REPLACE FUNCTION set_updated_at()
@@ -129,6 +154,7 @@ function mapInvestment(row: InvestmentRow) {
     product: row.product,
     target: Number(row.target ?? 0),
     monthly: Number(row.monthly ?? 0),
+    allocationPercent: Number(row.allocation_percent ?? 0),
     comment: row.comment ?? ''
   };
 }
@@ -160,9 +186,16 @@ async function seedBudgetWithClient(client: PoolClient): Promise<BudgetRow> {
 
   for (const investment of DEFAULT_INVESTMENTS) {
     await client.query(
-      `INSERT INTO budget_investment_targets (budget_id, product, target, monthly, comment)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [budget.id, investment.product, investment.target, investment.monthly, investment.comment]
+      `INSERT INTO budget_investment_targets (budget_id, product, target, monthly, allocation_percent, comment)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        budget.id,
+        investment.product,
+        investment.target,
+        investment.monthly,
+        investment.allocationPercent,
+        investment.comment
+      ]
     );
   }
 
@@ -200,7 +233,7 @@ async function fetchBudgetDetails(budgetId: string) {
       [budgetId]
     ),
     pool.query<InvestmentRow>(
-      `SELECT id, product, target, monthly, comment
+      `SELECT id, product, target, monthly, allocation_percent, comment
        FROM budget_investment_targets
        WHERE budget_id = $1
        ORDER BY created_at ASC`,
@@ -263,10 +296,17 @@ budgetRouter.put('/', async (req, res, next) => {
     const investmentRows: InvestmentRow[] = [];
     for (const investment of payload.investmentTargets) {
       const result = await client.query<InvestmentRow>(
-        `INSERT INTO budget_investment_targets (budget_id, product, target, monthly, comment)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, product, target, monthly, comment`,
-        [budget.id, investment.product, investment.target, investment.monthly, investment.comment ?? '']
+        `INSERT INTO budget_investment_targets (budget_id, product, target, monthly, allocation_percent, comment)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id, product, target, monthly, allocation_percent, comment`,
+        [
+          budget.id,
+          investment.product,
+          investment.target,
+          investment.monthly,
+          investment.allocationPercent,
+          investment.comment ?? ''
+        ]
       );
       if (result.rows[0]) {
         investmentRows.push(result.rows[0]);
