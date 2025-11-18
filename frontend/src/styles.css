@@ -716,6 +716,31 @@ button.tertiary.danger:hover {
   color: #cbd5f5;
 }
 
+.budget-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+}
+
+.save-status {
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.save-status.muted {
+  color: rgba(148, 163, 184, 0.7);
+}
+
+.error-banner {
+  background: rgba(248, 113, 113, 0.2);
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  color: #fecaca;
+  padding: 0.85rem 1rem;
+  border-radius: 0.75rem;
+  margin-bottom: 1rem;
+}
+
 .budget-charts-grid {
   align-items: stretch;
 }
@@ -741,6 +766,17 @@ button.tertiary.danger:hover {
   background: #0f172a;
   color: inherit;
   margin-right: 0.35rem;
+}
+
+.table-link {
+  color: #bfdbfe;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.table-link:hover {
+  color: #93c5fd;
+  text-decoration: underline;
 }
 
 .budget-section-grid {
@@ -815,6 +851,10 @@ button.tertiary.danger:hover {
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
+  }
+
+  .budget-actions {
+    align-items: flex-start;
   }
 
   .chart-card.span-2 {

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 import { apiClient } from '../utils/apiClient';
@@ -35,6 +36,13 @@ type MonthlyContributionDetail = AccountContribution & {
   currency: string;
 };
 
+type BudgetSnapshot = {
+  netIncome: number;
+  envelopes: Envelope[];
+  investmentTargets: InvestmentTarget[];
+  updatedAt: string | null;
+};
+
 const initialEnvelopes: Envelope[] = [
   { id: 'housing', category: 'Logement', amount: 1100, note: 'Loyer + assurance' },
   { id: 'bills', category: 'Charges fixes', amount: 480, note: 'Énergie, abonnements' },
@@ -50,13 +58,22 @@ const initialInvestmentTargets: InvestmentTarget[] = [
   { id: 'crypto', product: 'Allocation crypto', target: 5000, monthly: 80, comment: 'Ticket spéculatif < 5 %' }
 ];
 
-const initialPlan: MonthlyPlan = {
-  income: '4 200',
-  recurring: '1 950',
-  savings: '600',
-  investments: '800',
-  notes: 'Prévoir une enveloppe supplémentaire pour les vacances de mai.'
-};
+function formatDateTime(value: string | null) {
+  if (!value) {
+    return null;
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.valueOf())) {
+    return value;
+  }
+  return parsed.toLocaleString('fr-FR', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
 
 export function BudgetPage() {
   const [netIncome, setNetIncome] = useState(3500);
@@ -66,6 +83,10 @@ export function BudgetPage() {
   const [accountActions, setAccountActions] = useState<Record<string, AccountContribution[]>>(
     () => readStoredActions()
   );
+  const [isLoadingBudget, setIsLoadingBudget] = useState(true);
+  const [isSavingBudget, setIsSavingBudget] = useState(false);
+  const [budgetError, setBudgetError] = useState<string | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -97,6 +118,36 @@ export function BudgetPage() {
     window.addEventListener('storage', handleStorage);
     return () => {
       window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchBudget = async () => {
+      setIsLoadingBudget(true);
+      try {
+        const response = await apiClient.get<{ data: BudgetSnapshot }>('/budget');
+        if (!isMounted) {
+          return;
+        }
+        setNetIncome(response.data.data.netIncome);
+        setEnvelopes(response.data.data.envelopes);
+        setInvestmentTargets(response.data.data.investmentTargets);
+        setLastSavedAt(response.data.data.updatedAt);
+        setBudgetError(null);
+      } catch {
+        if (isMounted) {
+          setBudgetError('Impossible de charger votre budget pour le moment.');
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingBudget(false);
+        }
+      }
+    };
+    void fetchBudget();
+    return () => {
+      isMounted = false;
     };
   }, []);
 
@@ -214,6 +265,26 @@ export function BudgetPage() {
     ]);
   };
 
+  const handleSaveBudget = async () => {
+    setIsSavingBudget(true);
+    try {
+      const response = await apiClient.put<{ data: BudgetSnapshot }>('/budget', {
+        netIncome,
+        envelopes,
+        investmentTargets
+      });
+      setNetIncome(response.data.data.netIncome);
+      setEnvelopes(response.data.data.envelopes);
+      setInvestmentTargets(response.data.data.investmentTargets);
+      setLastSavedAt(response.data.data.updatedAt);
+      setBudgetError(null);
+    } catch {
+      setBudgetError('Impossible de sauvegarder vos changements. Réessayez dans un instant.');
+    } finally {
+      setIsSavingBudget(false);
+    }
+  };
+
   return (
     <section className="budget-page">
       <div className="page-header">
@@ -225,7 +296,24 @@ export function BudgetPage() {
             instantanément la capacité que vous pouvez envoyer vers vos placements.
           </p>
         </div>
+        <div className="budget-actions">
+          <button
+            className="primary"
+            onClick={handleSaveBudget}
+            disabled={isLoadingBudget || isSavingBudget}
+            type="button"
+          >
+            {isSavingBudget ? 'Enregistrement…' : 'Sauvegarder mon budget'}
+          </button>
+          {lastSavedAt ? (
+            <span className="save-status">Mis à jour {formatDateTime(lastSavedAt)}</span>
+          ) : (
+            <span className="save-status muted">Aucune sauvegarde enregistrée</span>
+          )}
+        </div>
       </div>
+
+      {budgetError ? <p className="error-banner">{budgetError}</p> : null}
 
       <div className="stat-grid">
         <div className="card stat-card highlight-card">
@@ -489,6 +577,10 @@ export function BudgetPage() {
               <p className="form-hint">
                 Visualisez vos montants programmés et l&apos;allocation par compte depuis la page comptes.
               </p>
+              <p className="form-hint">
+                Ajustez vos versements depuis la page <Link to="/accounts">Comptes</Link> ou en ouvrant un
+                compte précis.
+              </p>
             </div>
           </div>
           {sortedMonthlyContributionDetails.length > 0 ? (
@@ -504,7 +596,11 @@ export function BudgetPage() {
               <tbody>
                 {sortedMonthlyContributionDetails.map((contribution) => (
                   <tr key={contribution.id}>
-                    <td>{contribution.accountName}</td>
+                    <td>
+                      <Link className="table-link" to={`/accounts/${contribution.accountId}`}>
+                        {contribution.accountName}
+                      </Link>
+                    </td>
                     <td>{contribution.label}</td>
                     <td>
                       <span className={`amount-pill ${contribution.kind}`}>

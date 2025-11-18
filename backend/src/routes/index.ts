@@ -1,6 +1,7 @@
 import { Router } from 'express';
 
 import { accountsRouter } from './accounts.js';
+import { budgetRouter } from './budget.js';
 import { goalsRouter } from './goals.js';
 import { healthRouter } from './status.js';
 import { transactionsRouter } from './transactions.js';
@@ -13,3 +14,4 @@ router.use('/accounts', accountsRouter);
 router.use('/values', valuesRouter);
 router.use('/transactions', transactionsRouter);
 router.use('/goals', goalsRouter);
+router.use('/budget', budgetRouter);

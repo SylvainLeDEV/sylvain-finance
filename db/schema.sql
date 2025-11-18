@@ -19,6 +19,32 @@ CREATE TABLE IF NOT EXISTS account_values (
     UNIQUE (account_id, date)
 );
 
+CREATE TABLE IF NOT EXISTS budgets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    net_income NUMERIC(18, 2) NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS budget_envelopes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    budget_id UUID NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
+    category TEXT NOT NULL,
+    amount NUMERIC(18, 2) NOT NULL DEFAULT 0,
+    note TEXT DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS budget_investment_targets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    budget_id UUID NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
+    product TEXT NOT NULL,
+    target NUMERIC(18, 2) NOT NULL DEFAULT 0,
+    monthly NUMERIC(18, 2) NOT NULL DEFAULT 0,
+    comment TEXT DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS budget_categories (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     category_name TEXT NOT NULL UNIQUE,
@@ -55,5 +81,10 @@ $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER accounts_updated_at
     BEFORE UPDATE ON accounts
+    FOR EACH ROW
+    EXECUTE FUNCTION set_updated_at();
+
+CREATE TRIGGER budgets_updated_at
+    BEFORE UPDATE ON budgets
     FOR EACH ROW
     EXECUTE FUNCTION set_updated_at();
