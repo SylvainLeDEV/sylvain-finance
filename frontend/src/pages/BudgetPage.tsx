@@ -22,6 +22,7 @@ type InvestmentTarget = {
   target: number;
   monthly: number;
   allocationPercent: number;
+  accountId: string | null;
   comment: string;
 };
 
@@ -60,6 +61,7 @@ const initialInvestmentTargets: InvestmentTarget[] = [
     target: 40000,
     monthly: 350,
     allocationPercent: 50,
+    accountId: null,
     comment: 'Horizon 10 ans'
   },
   {
@@ -68,6 +70,7 @@ const initialInvestmentTargets: InvestmentTarget[] = [
     target: 15000,
     monthly: 200,
     allocationPercent: 35,
+    accountId: null,
     comment: 'Objectif vacances / projets'
   },
   {
@@ -76,6 +79,7 @@ const initialInvestmentTargets: InvestmentTarget[] = [
     target: 5000,
     monthly: 80,
     allocationPercent: 15,
+    accountId: null,
     comment: 'Ticket spéculatif < 5 %'
   }
 ];
@@ -109,6 +113,13 @@ export function BudgetPage() {
   const [isSavingBudget, setIsSavingBudget] = useState(false);
   const [budgetError, setBudgetError] = useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+
+  const accountsById = useMemo(() => {
+    return accounts.reduce<Record<string, AccountSummary>>((acc, account) => {
+      acc[account.id] = account;
+      return acc;
+    }, {});
+  }, [accounts]);
 
   useEffect(() => {
     let isMounted = true;
@@ -190,15 +201,11 @@ export function BudgetPage() {
   }, [accountActions]);
 
   const monthlyContributionDetails = useMemo(() => {
-    const accountIndex = accounts.reduce<Record<string, AccountSummary>>((acc, account) => {
-      acc[account.id] = account;
-      return acc;
-    }, {});
     return Object.entries(accountActions).reduce<MonthlyContributionDetail[]>((acc, [accountId, contributions]) => {
       if (!contributions) {
         return acc;
       }
-      const meta = accountIndex[accountId];
+      const meta = accountsById[accountId];
       const mapped = contributions
         .filter((contribution) => contribution.cadence === 'monthly')
         .map((contribution) => ({
@@ -209,7 +216,21 @@ export function BudgetPage() {
         }));
       return [...acc, ...mapped];
     }, []);
-  }, [accountActions, accounts]);
+  }, [accountActions, accountsById]);
+
+  const { automaticDepositsByAccount, automaticInvestmentFlow } = useMemo(() => {
+    const perAccount: Record<string, number> = {};
+    let total = 0;
+    for (const contribution of monthlyContributionDetails) {
+      if (contribution.kind !== 'deposit') {
+        continue;
+      }
+      perAccount[contribution.accountId] =
+        (perAccount[contribution.accountId] ?? 0) + contribution.amount;
+      total += contribution.amount;
+    }
+    return { automaticDepositsByAccount: perAccount, automaticInvestmentFlow: total };
+  }, [monthlyContributionDetails]);
 
   const sortedMonthlyContributionDetails = useMemo(() => {
     return [...monthlyContributionDetails].sort((a, b) => {
@@ -233,12 +254,14 @@ export function BudgetPage() {
   const allocationStats = useMemo(() => {
     const amountById: Record<string, number> = {};
     let totalPercent = 0;
+    let totalAmount = 0;
     for (const target of investmentTargets) {
       const percent = target.allocationPercent ?? 0;
+      const manualAmount = target.monthly ?? 0;
       totalPercent += percent;
-      amountById[target.id] = investableAmount * (percent / 100);
+      amountById[target.id] = manualAmount;
+      totalAmount += manualAmount;
     }
-    const totalAmount = Object.values(amountById).reduce((sum, amount) => sum + amount, 0);
     return {
       amountById,
       totalPercent,
@@ -282,17 +305,35 @@ export function BudgetPage() {
         if (target.id !== id) {
           return target;
         }
-        if (field === 'target' || field === 'monthly') {
+        if (field === 'target') {
           return {
             ...target,
-            [field]: Math.max(Number(value) || 0, 0)
+            target: Math.max(Number(value) || 0, 0)
           };
         }
         if (field === 'allocationPercent') {
           const parsed = Math.max(Math.min(Number(value) || 0, 100), 0);
+          const projectedManual = investableAmount > 0 ? (parsed / 100) * investableAmount : 0;
           return {
             ...target,
-            allocationPercent: parsed
+            allocationPercent: parsed,
+            monthly: projectedManual
+          };
+        }
+        if (field === 'monthly') {
+          const nextMonthly = Math.max(Number(value) || 0, 0);
+          const derivedPercent = investableAmount > 0 ? (nextMonthly / investableAmount) * 100 : 0;
+          const boundedPercent = Math.max(Math.min(derivedPercent, 100), 0);
+          return {
+            ...target,
+            monthly: nextMonthly,
+            allocationPercent: boundedPercent
+          };
+        }
+        if (field === 'accountId') {
+          return {
+            ...target,
+            accountId: value ? value : null
           };
         }
         return {
@@ -312,6 +353,7 @@ export function BudgetPage() {
         target: 0,
         monthly: 0,
         allocationPercent: 0,
+        accountId: accounts[0]?.id ?? null,
         comment: ''
       }
     ]);
@@ -387,6 +429,11 @@ export function BudgetPage() {
             })}
           </p>
           <small>Flux net programmé sur vos comptes</small>
+        </div>
+        <div className="card stat-card">
+          <h4>Investissements automatiques</h4>
+          <p>{automaticInvestmentFlow.toLocaleString('fr-FR')} €</p>
+          <small>Dépôts mensuels suivis (total)</small>
         </div>
         <div className={`card stat-card ${totals.investableAfterPlans >= 0 ? '' : 'warning-card'}`}>
           <h4>Reste à investir</h4>
@@ -562,10 +609,11 @@ export function BudgetPage() {
               <thead>
                 <tr>
                   <th>Support</th>
+                  <th>Compte lié</th>
                   <th>Objectif final</th>
                   <th>Allocation (%)</th>
-                  <th>Montant sur reste à investir</th>
-                  <th>Versement mensuel</th>
+                  <th>Effort manuel (€/mois)</th>
+                  <th>Versements automatiques</th>
                   <th>Commentaire</th>
                 </tr>
               </thead>
@@ -573,6 +621,9 @@ export function BudgetPage() {
                 {investmentTargets.map((target) => {
                   const allocationAmount = allocationStats.amountById[target.id] ?? 0;
                   const hasInvestable = investableAmount > 0;
+                  const automaticAmount = target.accountId
+                    ? automaticDepositsByAccount[target.accountId] ?? 0
+                    : 0;
                   return (
                     <tr key={target.id}>
                       <td>
@@ -584,6 +635,23 @@ export function BudgetPage() {
                             handleInvestmentTargetChange(target.id, 'product', event.target.value)
                           }
                         />
+                      </td>
+                      <td>
+                        <select
+                          className="inline-select"
+                          value={target.accountId ?? ''}
+                          onChange={(event) =>
+                            handleInvestmentTargetChange(target.id, 'accountId', event.target.value)
+                          }
+                        >
+                          <option value="">Associer un compte</option>
+                          {accounts.map((account) => (
+                            <option key={account.id} value={account.id}>
+                              {account.name}
+                            </option>
+                          ))}
+                        </select>
+                        <small className="table-hint">Permet de suivre les virements auto</small>
                       </td>
                       <td>
                         <input
@@ -617,21 +685,43 @@ export function BudgetPage() {
                         </div>
                       </td>
                       <td>
-                        <span className={`allocation-result ${hasInvestable ? '' : 'muted'}`}>
-                          {hasInvestable ? `${allocationAmount.toLocaleString('fr-FR')} €` : '—'}
-                        </span>
+                        <div className="manual-amount-cell">
+                          <input
+                            className="inline-input"
+                            type="number"
+                            min={0}
+                            value={target.monthly}
+                            onChange={(event) =>
+                              handleInvestmentTargetChange(target.id, 'monthly', event.target.value)
+                            }
+                          />
+                          <div className="manual-amount-meta">
+                            {hasInvestable ? (
+                              <span>
+                                = {allocationAmount.toLocaleString('fr-FR')} € ({target.allocationPercent.toFixed(1)}%
+                                du reste)
+                              </span>
+                            ) : (
+                              <span className="muted">Définissez votre reste à investir</span>
+                            )}
+                          </div>
+                        </div>
                       </td>
                       <td>
-                        <input
-                          className="inline-input"
-                          type="number"
-                          min={0}
-                          value={target.monthly}
-                          onChange={(event) =>
-                            handleInvestmentTargetChange(target.id, 'monthly', event.target.value)
-                          }
-                        />
-                        €
+                        {target.accountId ? (
+                          <div className="auto-flow-stack">
+                            <span className={`auto-flow-pill ${automaticAmount > 0 ? 'active' : ''}`}>
+                              {automaticAmount > 0
+                                ? `+${automaticAmount.toLocaleString('fr-FR')} €/mois`
+                                : 'Aucun flux suivi'}
+                            </span>
+                            <small>
+                              Total prévu : {(automaticAmount + target.monthly).toLocaleString('fr-FR')} €/mois
+                            </small>
+                          </div>
+                        ) : (
+                          <span className="muted">Associez un compte pour voir les montants automatiques.</span>
+                        )}
                       </td>
                       <td>
                         <input
@@ -666,6 +756,13 @@ export function BudgetPage() {
                 {investableAmount.toLocaleString('fr-FR')} €
               </p>
               <small>Projection basée sur votre reste à investir</small>
+            </div>
+            <div>
+              <p className="summary-label">Versements automatiques suivis</p>
+              <p className="summary-value">
+                {automaticInvestmentFlow.toLocaleString('fr-FR')} €/mois
+              </p>
+              <small>Montants déjà programmés par compte</small>
             </div>
             <div>
               <p className="summary-label">Montant restant</p>

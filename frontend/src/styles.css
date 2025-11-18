@@ -813,6 +813,55 @@ button.tertiary.danger:hover {
   margin-right: 0.35rem;
 }
 
+.inline-select {
+  width: 180px;
+  padding: 0.45rem 0.6rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: #0f172a;
+  color: inherit;
+}
+
+.table-hint {
+  display: block;
+  margin-top: 0.35rem;
+  color: #94a3b8;
+  font-size: 0.8rem;
+}
+
+.manual-amount-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.manual-amount-meta {
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.auto-flow-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.auto-flow-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.15);
+  color: #bfdbfe;
+  font-weight: 600;
+}
+
+.auto-flow-pill.active {
+  background: rgba(34, 197, 94, 0.2);
+  color: #bbf7d0;
+}
+
 .table-link {
   color: #bfdbfe;
   text-decoration: none;
