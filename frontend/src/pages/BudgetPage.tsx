@@ -163,13 +163,6 @@ export function BudgetPage() {
     };
   }, [clearAutoSaveTimer]);
 
-  const accountsById = useMemo(() => {
-    return accounts.reduce<Record<string, AccountSummary>>((acc, account) => {
-      acc[account.id] = account;
-      return acc;
-    }, {});
-  }, [accounts]);
-
   useEffect(() => {
     let isMounted = true;
     const fetchAccounts = async () => {

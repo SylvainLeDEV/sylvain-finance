@@ -358,16 +358,6 @@ budgetRouter.put('/', async (req, res, next) => {
       );
     }
 
-    const idsToDelete = existingInvestmentsResult.rows
-      .map((row) => row.id)
-      .filter((id) => !retainedInvestmentIds.has(id));
-    if (idsToDelete.length > 0) {
-      await client.query(
-        `DELETE FROM budget_investment_targets WHERE budget_id = $1 AND id = ANY($2::uuid[])`,
-        [budget.id, idsToDelete]
-      );
-    }
-
     await client.query('COMMIT');
 
     const [refreshedBudget, refreshedDetails] = await Promise.all([
