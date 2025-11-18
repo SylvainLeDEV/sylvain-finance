@@ -26,6 +26,7 @@ type Account = {
   type: string;
   currency: string;
   value: number;
+  loginUrl: string | null;
 };
 
 type FormState = {
@@ -34,6 +35,7 @@ type FormState = {
   currency: string;
   initialValue: string;
   initialDate: string;
+  loginUrl: string;
 };
 
 const emptyFormState: FormState = {
@@ -41,7 +43,8 @@ const emptyFormState: FormState = {
   type: '',
   currency: 'EUR',
   initialValue: '',
-  initialDate: ''
+  initialDate: '',
+  loginUrl: ''
 };
 
 export function AccountsPage() {
@@ -97,7 +100,8 @@ export function AccountsPage() {
       type: account.type,
       currency: account.currency,
       initialValue: '',
-      initialDate: ''
+      initialDate: '',
+      loginUrl: account.loginUrl ?? ''
     });
     setEditingAccount(account);
     setFormError(null);
@@ -206,17 +210,20 @@ export function AccountsPage() {
     setIsSubmitting(true);
     setFormError(null);
     try {
+      const normalizedLoginUrl = formState.loginUrl.trim();
       if (editingAccount) {
         await apiClient.put(`/accounts/${editingAccount.id}`, {
           name: formState.name,
           type: formState.type,
-          currency: formState.currency
+          currency: formState.currency,
+          loginUrl: normalizedLoginUrl
         });
       } else {
         const payload: Record<string, unknown> = {
           name: formState.name,
           type: formState.type,
-          currency: formState.currency
+          currency: formState.currency,
+          loginUrl: normalizedLoginUrl
         };
 
         if (formState.initialValue) {
@@ -294,6 +301,17 @@ export function AccountsPage() {
                 required
                 maxLength={3}
                 value={formState.currency}
+                onChange={handleChange}
+              />
+            </div>
+            <div>
+              <label htmlFor="loginUrl">URL de connexion (optionnel)</label>
+              <input
+                id="loginUrl"
+                name="loginUrl"
+                type="url"
+                placeholder="https://..."
+                value={formState.loginUrl}
                 onChange={handleChange}
               />
             </div>
@@ -394,6 +412,16 @@ export function AccountsPage() {
                           <button type="button" className="secondary" onClick={() => openEditForm(account)}>
                             Modifier
                           </button>
+                          {account.loginUrl && (
+                            <a
+                              href={account.loginUrl}
+                              className="ghost-button"
+                              target="_blank"
+                              rel="noreferrer noopener"
+                            >
+                              Connexion
+                            </a>
+                          )}
                           <Link to={`/accounts/${account.id}`} className="ghost-button">
                             Ouvrir
                           </Link>

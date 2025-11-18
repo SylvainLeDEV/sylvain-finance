@@ -86,6 +86,7 @@ type Account = {
   type: string;
   currency: string;
   value: number;
+  loginUrl: string | null;
 };
 
 type AccountValue = {
@@ -379,6 +380,16 @@ export function AccountDetailsPage() {
           </p>
         </div>
         <div className="header-actions">
+          {account?.loginUrl && (
+            <a
+              href={account.loginUrl}
+              className="ghost-button"
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              Accéder au site
+            </a>
+          )}
           <Link to="/accounts" className="secondary">
             ← Retour
           </Link>

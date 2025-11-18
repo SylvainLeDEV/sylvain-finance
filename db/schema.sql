@@ -5,9 +5,13 @@ CREATE TABLE IF NOT EXISTS accounts (
     name TEXT NOT NULL,
     type TEXT NOT NULL,
     currency CHAR(3) NOT NULL,
+    login_url TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Ensure the optional login URL column exists even if the table was created before this feature
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS login_url TEXT;
 
 CREATE TABLE IF NOT EXISTS account_values (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

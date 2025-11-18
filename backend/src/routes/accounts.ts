@@ -3,10 +3,22 @@ import { z } from 'zod';
 
 import { pool } from '../config/database.js';
 
+const loginUrlSchema = z.preprocess(
+  (value) => (typeof value === 'string' ? value.trim() : value),
+  z.union([
+    z
+      .string()
+      .url({ message: 'URL invalide' })
+      .max(2048, { message: 'URL trop longue (2048 caractères maximum)' }),
+    z.literal('')
+  ])
+);
+
 const baseAccountSchema = z.object({
   name: z.string().min(1),
   type: z.string().min(1),
-  currency: z.string().length(3)
+  currency: z.string().length(3),
+  loginUrl: loginUrlSchema.optional()
 });
 
 const createAccountSchema = baseAccountSchema.extend({
@@ -22,6 +34,7 @@ type AccountRow = {
   type: string;
   currency: string;
   value: string | null;
+  login_url: string | null;
 };
 
 type NetWorthRow = {
@@ -40,6 +53,7 @@ const ACCOUNT_WITH_VALUE_QUERY = `
     a.name,
     a.type,
     a.currency,
+    a.login_url,
     COALESCE(latest_values.value, 0) AS value
   FROM accounts a
   LEFT JOIN LATERAL (
@@ -64,8 +78,17 @@ function mapAccountRow(row: AccountRow) {
     name: row.name,
     type: row.type,
     currency: row.currency,
-    value: Number(row.value ?? 0)
+    value: Number(row.value ?? 0),
+    loginUrl: row.login_url
   };
+}
+
+function normalizeLoginUrl(value?: string | null) {
+  if (!value) {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 async function fetchAccountById(id: string) {
@@ -132,12 +155,13 @@ accountsRouter.post('/', async (req, res, next) => {
   try {
     const payload = createAccountSchema.parse(req.body);
     const normalizedCurrency = payload.currency.toUpperCase();
+    const normalizedLoginUrl = normalizeLoginUrl(payload.loginUrl);
 
     await client.query('BEGIN');
     transactionStarted = true;
     const accountResult = await client.query<{ id: string }>(
-      'INSERT INTO accounts (name, type, currency) VALUES ($1, $2, $3) RETURNING id',
-      [payload.name, payload.type, normalizedCurrency]
+      'INSERT INTO accounts (name, type, currency, login_url) VALUES ($1, $2, $3, $4) RETURNING id',
+      [payload.name, payload.type, normalizedCurrency, normalizedLoginUrl]
     );
 
     const accountId = accountResult.rows[0]?.id;
@@ -190,12 +214,11 @@ accountsRouter.put('/:id', async (req, res, next) => {
   try {
     const payload = updateAccountSchema.parse(req.body);
     const normalizedCurrency = payload.currency.toUpperCase();
-    const result = await pool.query('UPDATE accounts SET name=$1, type=$2, currency=$3 WHERE id=$4', [
-      payload.name,
-      payload.type,
-      normalizedCurrency,
-      req.params.id
-    ]);
+    const normalizedLoginUrl = normalizeLoginUrl(payload.loginUrl);
+    const result = await pool.query(
+      'UPDATE accounts SET name=$1, type=$2, currency=$3, login_url=$4 WHERE id=$5',
+      [payload.name, payload.type, normalizedCurrency, normalizedLoginUrl, req.params.id]
+    );
 
     if (result.rowCount === 0) {
       res.status(404).json({ status: 'error', message: 'Account not found' });
