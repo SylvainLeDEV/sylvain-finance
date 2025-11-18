@@ -252,18 +252,15 @@ export function BudgetPage() {
   const investableAmount = Math.max(totals.investableAfterPlans, 0);
 
   const allocationStats = useMemo(() => {
-    const amountById: Record<string, number> = {};
     let totalPercent = 0;
     let totalAmount = 0;
     for (const target of investmentTargets) {
       const percent = target.allocationPercent ?? 0;
       const manualAmount = target.monthly ?? 0;
       totalPercent += percent;
-      amountById[target.id] = manualAmount;
       totalAmount += manualAmount;
     }
     return {
-      amountById,
       totalPercent,
       totalAmount,
       remainingAmount: Math.max(investableAmount - totalAmount, 0)
@@ -357,6 +354,10 @@ export function BudgetPage() {
         comment: ''
       }
     ]);
+  };
+
+  const handleRemoveInvestmentTarget = (id: string) => {
+    setInvestmentTargets((prev) => prev.filter((target) => target.id !== id));
   };
 
   const handleSaveBudget = async () => {
@@ -605,87 +606,120 @@ export function BudgetPage() {
             investir.
           </p>
           <div className="investment-table-wrapper">
-            <table className="data-table">
+            <table className="data-table investment-table">
+              <colgroup>
+                <col className="col-support" />
+                <col className="col-target" />
+                <col className="col-allocation" />
+                <col className="col-manual" />
+                <col className="col-auto" />
+                <col className="col-notes" />
+                <col className="col-actions" />
+              </colgroup>
               <thead>
                 <tr>
-                  <th>Support</th>
-                  <th>Compte lié</th>
-                  <th>Objectif final</th>
-                  <th>Allocation (%)</th>
-                  <th>Effort manuel (€/mois)</th>
-                  <th>Versements automatiques</th>
-                  <th>Commentaire</th>
+                  <th>Support & compte</th>
+                  <th>Objectif</th>
+                  <th>Allocation</th>
+                  <th>Effort manuel</th>
+                  <th>Flux automatiques</th>
+                  <th>Notes</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
                 {investmentTargets.map((target) => {
-                  const allocationAmount = allocationStats.amountById[target.id] ?? 0;
-                  const hasInvestable = investableAmount > 0;
                   const automaticAmount = target.accountId
                     ? automaticDepositsByAccount[target.accountId] ?? 0
                     : 0;
+                  const hasInvestable = investableAmount > 0;
+                  const allocationAmount = hasInvestable
+                    ? (target.allocationPercent / 100) * investableAmount
+                    : 0;
+                  const targetAccount = target.accountId ? accountsById[target.accountId] : null;
                   return (
                     <tr key={target.id}>
                       <td>
-                        <input
-                          className="inline-input"
-                          type="text"
-                          value={target.product}
-                          onChange={(event) =>
-                            handleInvestmentTargetChange(target.id, 'product', event.target.value)
-                          }
-                        />
-                      </td>
-                      <td>
-                        <select
-                          className="inline-select"
-                          value={target.accountId ?? ''}
-                          onChange={(event) =>
-                            handleInvestmentTargetChange(target.id, 'accountId', event.target.value)
-                          }
-                        >
-                          <option value="">Associer un compte</option>
-                          {accounts.map((account) => (
-                            <option key={account.id} value={account.id}>
-                              {account.name}
-                            </option>
-                          ))}
-                        </select>
-                        <small className="table-hint">Permet de suivre les virements auto</small>
-                      </td>
-                      <td>
-                        <input
-                          className="inline-input"
-                          type="number"
-                          min={0}
-                          value={target.target}
-                          onChange={(event) =>
-                            handleInvestmentTargetChange(target.id, 'target', event.target.value)
-                          }
-                        />
-                        €
-                      </td>
-                      <td>
-                        <div className="allocation-input-wrapper">
+                        <div className="table-field">
+                          <label>Support</label>
                           <input
-                            className="inline-input allocation-input"
-                            type="number"
-                            min={0}
-                            max={100}
-                            value={target.allocationPercent}
+                            className="inline-input"
+                            type="text"
+                            value={target.product}
                             onChange={(event) =>
-                              handleInvestmentTargetChange(
-                                target.id,
-                                'allocationPercent',
-                                event.target.value
-                              )
+                              handleInvestmentTargetChange(target.id, 'product', event.target.value)
                             }
                           />
-                          %
+                        </div>
+                        <div className="table-field">
+                          <label>Compte associé</label>
+                          <select
+                            className="inline-select"
+                            value={target.accountId ?? ''}
+                            onChange={(event) =>
+                              handleInvestmentTargetChange(target.id, 'accountId', event.target.value)
+                            }
+                          >
+                            <option value="">Aucun compte relié</option>
+                            {accounts.map((account) => (
+                              <option key={account.id} value={account.id}>
+                                {account.name}
+                              </option>
+                            ))}
+                          </select>
+                          <small className="table-hint">
+                            {targetAccount
+                              ? `Objectif suivi depuis ${targetAccount.name}`
+                              : 'Reliez un compte pour piloter vos flux automatiques.'}
+                          </small>
                         </div>
                       </td>
                       <td>
-                        <div className="manual-amount-cell">
+                        <div className="table-field">
+                          <label>Objectif total</label>
+                          <input
+                            className="inline-input"
+                            type="number"
+                            min={0}
+                            value={target.target}
+                            onChange={(event) =>
+                              handleInvestmentTargetChange(target.id, 'target', event.target.value)
+                            }
+                          />
+                          <small className="table-hint">Montant visé à terme</small>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="table-field">
+                          <label>Pourcentage</label>
+                          <div className="allocation-input-wrapper">
+                            <input
+                              className="inline-input allocation-input"
+                              type="number"
+                              min={0}
+                              max={100}
+                              step={0.5}
+                              value={target.allocationPercent}
+                              onChange={(event) =>
+                                handleInvestmentTargetChange(
+                                  target.id,
+                                  'allocationPercent',
+                                  event.target.value
+                                )
+                              }
+                            />
+                            %
+                          </div>
+                          <small className="table-hint">
+                            {hasInvestable
+                              ? `${allocationAmount.toLocaleString('fr-FR')} € projetés`
+                              : 'Définissez votre reste à investir'}
+                          </small>
+                        </div>
+                      </td>
+                      <td>
+                        <div className="table-field">
+                          <label>Montant mensuel</label>
                           <input
                             className="inline-input"
                             type="number"
@@ -695,43 +729,63 @@ export function BudgetPage() {
                               handleInvestmentTargetChange(target.id, 'monthly', event.target.value)
                             }
                           />
-                          <div className="manual-amount-meta">
-                            {hasInvestable ? (
-                              <span>
-                                = {allocationAmount.toLocaleString('fr-FR')} € ({target.allocationPercent.toFixed(1)}%
-                                du reste)
-                              </span>
-                            ) : (
-                              <span className="muted">Définissez votre reste à investir</span>
-                            )}
-                          </div>
+                          <small className="table-hint">
+                            {hasInvestable
+                              ? `${target.allocationPercent.toFixed(1)} % du reste à investir`
+                              : 'Renseignez votre capacité restante'}
+                          </small>
                         </div>
                       </td>
                       <td>
-                        {target.accountId ? (
-                          <div className="auto-flow-stack">
-                            <span className={`auto-flow-pill ${automaticAmount > 0 ? 'active' : ''}`}>
-                              {automaticAmount > 0
-                                ? `+${automaticAmount.toLocaleString('fr-FR')} €/mois`
-                                : 'Aucun flux suivi'}
+                        <div className="table-field">
+                          <label>Suivi automatique</label>
+                          {target.accountId ? (
+                            <div className="auto-flow-stack">
+                              <span className={`auto-flow-pill ${automaticAmount > 0 ? 'active' : ''}`}>
+                                {automaticAmount > 0
+                                  ? `+${automaticAmount.toLocaleString('fr-FR')} €/mois`
+                                  : 'Aucun flux suivi'}
+                              </span>
+                              <small>
+                                Total (auto + manuel) :{' '}
+                                {(automaticAmount + target.monthly).toLocaleString('fr-FR')} €/mois
+                              </small>
+                              {targetAccount ? (
+                                <small>
+                                  <Link className="table-link" to={`/accounts/${targetAccount.id}`}>
+                                    Voir le compte
+                                  </Link>
+                                </small>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <span className="muted">
+                              Associez un compte pour voir les montants automatiques.
                             </span>
-                            <small>
-                              Total prévu : {(automaticAmount + target.monthly).toLocaleString('fr-FR')} €/mois
-                            </small>
-                          </div>
-                        ) : (
-                          <span className="muted">Associez un compte pour voir les montants automatiques.</span>
-                        )}
+                          )}
+                        </div>
                       </td>
                       <td>
-                        <input
-                          className="inline-input"
-                          type="text"
-                          value={target.comment}
-                          onChange={(event) =>
-                            handleInvestmentTargetChange(target.id, 'comment', event.target.value)
-                          }
-                        />
+                        <div className="table-field">
+                          <label>Commentaires</label>
+                          <input
+                            className="inline-input"
+                            type="text"
+                            value={target.comment}
+                            onChange={(event) =>
+                              handleInvestmentTargetChange(target.id, 'comment', event.target.value)
+                            }
+                          />
+                        </div>
+                      </td>
+                      <td className="action-cell">
+                        <button
+                          type="button"
+                          className="icon-button"
+                          onClick={() => handleRemoveInvestmentTarget(target.id)}
+                        >
+                          Supprimer
+                        </button>
                       </td>
                     </tr>
                   );

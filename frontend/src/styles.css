@@ -407,6 +407,89 @@ body {
   overflow-x: auto;
 }
 
+.investment-table {
+  width: 100%;
+  min-width: 1100px;
+  table-layout: fixed;
+}
+
+.investment-table col.col-support {
+  width: 28%;
+}
+
+.investment-table col.col-target {
+  width: 14%;
+}
+
+.investment-table col.col-allocation,
+.investment-table col.col-manual {
+  width: 14%;
+}
+
+.investment-table col.col-auto {
+  width: 16%;
+}
+
+.investment-table col.col-notes {
+  width: 12%;
+}
+
+.investment-table col.col-actions {
+  width: 8%;
+}
+
+.investment-table th,
+.investment-table td {
+  vertical-align: top;
+}
+
+.investment-table .inline-input,
+.investment-table .inline-select {
+  width: 100%;
+  margin-right: 0;
+}
+
+.investment-table .allocation-input {
+  width: 100%;
+}
+
+.table-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.table-field:last-of-type {
+  margin-bottom: 0;
+}
+
+.table-field label {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.action-cell {
+  text-align: right;
+}
+
+.icon-button {
+  background: rgba(248, 113, 113, 0.1);
+  color: #fecaca;
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  border-radius: 999px;
+  padding: 0.35rem 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.icon-button:hover {
+  background: rgba(248, 113, 113, 0.2);
+  border-color: rgba(248, 113, 113, 0.8);
+}
+
 .allocation-input-wrapper {
   display: inline-flex;
   align-items: center;
@@ -687,6 +770,56 @@ button.tertiary.danger:hover {
   color: #94a3b8;
 }
 
+.account-goals-panel {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border-radius: 0.85rem;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.account-goals-panel h5 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.account-goals-panel p {
+  margin: 0;
+  color: #94a3b8;
+}
+
+.account-goals-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.account-goals-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  background: rgba(4, 6, 22, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+}
+
+.account-goals-list li strong {
+  display: block;
+}
+
+.account-goals-list li p {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+}
+
 .action-form {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -871,6 +1004,18 @@ button.tertiary.danger:hover {
 .table-link:hover {
   color: #93c5fd;
   text-decoration: underline;
+}
+
+.goal-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(249, 115, 22, 0.18);
+  color: #fdba74;
+  font-size: 0.85rem;
+  font-weight: 600;
 }
 
 .budget-section-grid {

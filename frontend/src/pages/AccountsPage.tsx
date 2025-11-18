@@ -5,6 +5,7 @@ import {
   type FormEvent,
   useCallback,
   useEffect,
+  useMemo,
   useState
 } from 'react';
 
@@ -27,6 +28,19 @@ type Account = {
   currency: string;
   value: number;
   loginUrl: string | null;
+};
+
+type BudgetInvestmentTarget = {
+  id: string;
+  product: string;
+  target: number;
+  monthly: number;
+  allocationPercent: number;
+  accountId: string | null;
+};
+
+type BudgetSnapshot = {
+  investmentTargets: BudgetInvestmentTarget[];
 };
 
 type FormState = {
@@ -62,6 +76,7 @@ export function AccountsPage() {
   );
   const [actionDrafts, setActionDrafts] = useState<Record<string, ContributionFormState>>({});
   const [actionErrors, setActionErrors] = useState<Record<string, string | null>>({});
+  const [investmentTargets, setInvestmentTargets] = useState<BudgetInvestmentTarget[]>([]);
 
   const fetchAccounts = useCallback(async () => {
     setLoading(true);
@@ -79,6 +94,27 @@ export function AccountsPage() {
   useEffect(() => {
     void fetchAccounts();
   }, [fetchAccounts]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchBudget = async () => {
+      try {
+        const response = await apiClient.get<{ data: BudgetSnapshot }>('/budget');
+        if (!isMounted) {
+          return;
+        }
+        setInvestmentTargets(response.data.data.investmentTargets);
+      } catch {
+        if (isMounted) {
+          setInvestmentTargets([]);
+        }
+      }
+    };
+    void fetchBudget();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -246,6 +282,15 @@ export function AccountsPage() {
   }
 
   const hasAccounts = accounts.length > 0;
+  const targetsByAccountId = useMemo(() => {
+    return investmentTargets.reduce<Record<string, BudgetInvestmentTarget[]>>((acc, target) => {
+      if (!target.accountId) {
+        return acc;
+      }
+      acc[target.accountId] = [...(acc[target.accountId] ?? []), target];
+      return acc;
+    }, {});
+  }, [investmentTargets]);
 
   return (
     <section>
@@ -375,6 +420,7 @@ export function AccountsPage() {
                 const isExpanded = expandedAccountId === account.id;
                 const contributions = getAccountContributions(account.id);
                 const monthlyFlow = getAccountFlowSummary(account.id);
+                const linkedTargets = targetsByAccountId[account.id] ?? [];
                 return (
                   <Fragment key={account.id}>
                     <tr className={isExpanded ? 'expanded-row' : undefined}>
@@ -394,6 +440,9 @@ export function AccountsPage() {
                               /mois
                             </strong>
                           </span>
+                          {linkedTargets.length > 0 ? (
+                            <span className="goal-pill">{linkedTargets.length} objectif(s)</span>
+                          ) : null}
                         </div>
                       </td>
                       <td>{account.type}</td>
@@ -451,6 +500,43 @@ export function AccountsPage() {
                                   /mois
                                 </strong>
                               </div>
+                            </div>
+
+                            <div className="account-goals-panel">
+                              <div>
+                                <h5>Objectifs reliés depuis le budget</h5>
+                                <p>
+                                  Chaque objectif connecté à ce compte ajuste automatiquement votre reste à investir.
+                                </p>
+                              </div>
+                              {linkedTargets.length > 0 ? (
+                                <ul className="account-goals-list">
+                                  {linkedTargets.map((goal) => {
+                                    const goalPercent = new Intl.NumberFormat('fr-FR', {
+                                      minimumFractionDigits: 1,
+                                      maximumFractionDigits: 1
+                                    }).format(goal.allocationPercent ?? 0);
+                                    return (
+                                      <li key={goal.id}>
+                                        <div>
+                                          <strong>{goal.product}</strong>
+                                          <p>
+                                            {goal.monthly.toLocaleString('fr-FR')} €/mois visés • {goalPercent} % du reste
+                                            à investir
+                                          </p>
+                                        </div>
+                                        <span className="amount-pill deposit">
+                                          +{goal.monthly.toLocaleString('fr-FR')} €/mois
+                                        </span>
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              ) : (
+                                <p className="chart-placeholder">
+                                  Aucun objectif n&apos;est relié à ce compte depuis la page budget.
+                                </p>
+                              )}
                             </div>
 
                             <div className="action-form">
