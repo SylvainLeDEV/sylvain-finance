@@ -296,6 +296,8 @@ export function BudgetPage() {
   }, [envelopes, netIncome, monthlyContributionFlow]);
 
   const investableAmount = Math.max(totals.investableAfterPlans, 0);
+  const rawManualInvestableAmount = investableAmount - automaticInvestmentFlow;
+  const manualInvestableAmount = Math.max(rawManualInvestableAmount, 0);
 
   const allocationStats = useMemo(() => {
     let totalPercent = 0;
@@ -306,12 +308,18 @@ export function BudgetPage() {
       totalPercent += percent;
       totalAmount += manualAmount;
     }
+    const automatedAmount = automaticInvestmentFlow;
+    const coveredAmount = totalAmount + automatedAmount;
     return {
       totalPercent,
       totalAmount,
-      remainingAmount: Math.max(investableAmount - totalAmount, 0)
+      automatedAmount,
+      coveredAmount,
+      manualCapacity: manualInvestableAmount,
+      remainingAmount: Math.max(manualInvestableAmount - totalAmount, 0),
+      overflowAmount: Math.max(totalAmount - manualInvestableAmount, 0)
     };
-  }, [investmentTargets, investableAmount]);
+  }, [automaticInvestmentFlow, investmentTargets, manualInvestableAmount]);
 
   const manualSaveDisabled = isLoadingBudget || isSavingBudget || isAutoSaving || !hasUnsavedChanges;
   let saveStatusClass = 'save-status muted';
@@ -370,7 +378,8 @@ export function BudgetPage() {
         }
         if (field === 'allocationPercent') {
           const parsed = Math.max(Math.min(Number(value) || 0, 100), 0);
-          const projectedManual = investableAmount > 0 ? (parsed / 100) * investableAmount : 0;
+          const projectedManual =
+            manualInvestableAmount > 0 ? (parsed / 100) * manualInvestableAmount : 0;
           return {
             ...target,
             allocationPercent: parsed,
@@ -379,7 +388,8 @@ export function BudgetPage() {
         }
         if (field === 'monthly') {
           const nextMonthly = Math.max(Number(value) || 0, 0);
-          const derivedPercent = investableAmount > 0 ? (nextMonthly / investableAmount) * 100 : 0;
+          const derivedPercent =
+            manualInvestableAmount > 0 ? (nextMonthly / manualInvestableAmount) * 100 : 0;
           const boundedPercent = Math.max(Math.min(derivedPercent, 100), 0);
           return {
             ...target,
@@ -547,13 +557,13 @@ export function BudgetPage() {
           <p>{automaticInvestmentFlow.toLocaleString('fr-FR')} €</p>
           <small>Dépôts mensuels suivis (total)</small>
         </div>
-        <div className={`card stat-card ${totals.investableAfterPlans >= 0 ? '' : 'warning-card'}`}>
-          <h4>Reste à investir</h4>
-          <p>{totals.investableAfterPlans.toLocaleString('fr-FR')} €</p>
+        <div className={`card stat-card ${rawManualInvestableAmount >= 0 ? '' : 'warning-card'}`}>
+          <h4>Reste à investir (hors versements automatiques)</h4>
+          <p>{rawManualInvestableAmount.toLocaleString('fr-FR')} €</p>
           <small>
-            {totals.investableAfterPlans >= 0
-              ? `Après dépenses et versements (${monthlyContributionFlow.toLocaleString('fr-FR')} €/mois)`
-              : 'Vous dépassez votre salaire net'}
+            {rawManualInvestableAmount >= 0
+              ? `Après dépenses, flux suivis et ${automaticInvestmentFlow.toLocaleString('fr-FR')} € de versements auto`
+              : 'Vos versements automatiques dépassent votre reste disponible'}
           </small>
         </div>
         <div className="card stat-card">
@@ -630,10 +640,10 @@ export function BudgetPage() {
               />
             </label>
             <label>
-              Reste après versements
+              Reste après versements automatiques
               <input
                 type="text"
-                value={`${totals.investableAfterPlans.toLocaleString('fr-FR')} €`}
+                value={`${rawManualInvestableAmount.toLocaleString('fr-FR')} €`}
                 readOnly
               />
             </label>
@@ -750,9 +760,9 @@ export function BudgetPage() {
                   const automaticAmount = target.accountId
                     ? automaticDepositsByAccount[target.accountId] ?? 0
                     : 0;
-                  const hasInvestable = investableAmount > 0;
+                  const hasInvestable = manualInvestableAmount > 0;
                   const allocationAmount = hasInvestable
-                    ? (target.allocationPercent / 100) * investableAmount
+                    ? (target.allocationPercent / 100) * manualInvestableAmount
                     : 0;
                   const targetAccount = target.accountId ? accountsById[target.accountId] : null;
                   return (
@@ -830,8 +840,8 @@ export function BudgetPage() {
                           </div>
                           <small className="table-hint">
                             {hasInvestable
-                              ? `${allocationAmount.toLocaleString('fr-FR')} € projetés`
-                              : 'Définissez votre reste à investir'}
+                              ? `${allocationAmount.toLocaleString('fr-FR')} € projetés (hors versements auto)`
+                              : 'Définissez votre reste à investir (hors versements auto)'}
                           </small>
                         </div>
                       </td>
@@ -849,8 +859,8 @@ export function BudgetPage() {
                           />
                           <small className="table-hint">
                             {hasInvestable
-                              ? `${target.allocationPercent.toFixed(1)} % du reste à investir`
-                              : 'Renseignez votre capacité restante'}
+                              ? `${target.allocationPercent.toFixed(1)} % du reste à investir (hors versements auto)`
+                              : 'Renseignez votre capacité restante (hors versements auto)'}
                           </small>
                         </div>
                       </td>
@@ -865,8 +875,7 @@ export function BudgetPage() {
                                   : 'Aucun flux suivi'}
                               </span>
                               <small>
-                                Total (auto + manuel) :{' '}
-                                {(automaticAmount + target.monthly).toLocaleString('fr-FR')} €/mois
+                                Ces versements automatiques sont déjà déduits de votre reste à investir.
                               </small>
                               {targetAccount ? (
                                 <small>
@@ -916,9 +925,9 @@ export function BudgetPage() {
               const automaticAmount = target.accountId
                 ? automaticDepositsByAccount[target.accountId] ?? 0
                 : 0;
-              const hasInvestable = investableAmount > 0;
+              const hasInvestable = manualInvestableAmount > 0;
               const allocationAmount = hasInvestable
-                ? (target.allocationPercent / 100) * investableAmount
+                ? (target.allocationPercent / 100) * manualInvestableAmount
                 : 0;
               const targetAccount = target.accountId ? accountsById[target.accountId] : null;
               return (
@@ -989,8 +998,8 @@ export function BudgetPage() {
                       </div>
                       <small className="table-hint">
                         {hasInvestable
-                          ? `${allocationAmount.toLocaleString('fr-FR')} € projetés`
-                          : 'Définissez votre reste à investir'}
+                          ? `${allocationAmount.toLocaleString('fr-FR')} € projetés (hors versements auto)`
+                          : 'Définissez votre reste à investir (hors versements auto)'}
                       </small>
                     </label>
                   </div>
@@ -1006,8 +1015,8 @@ export function BudgetPage() {
                     />
                     <small className="table-hint">
                       {hasInvestable
-                        ? `${target.allocationPercent.toFixed(1)} % du reste à investir`
-                        : 'Renseignez votre capacité restante'}
+                        ? `${target.allocationPercent.toFixed(1)} % du reste à investir (hors versements auto)`
+                        : 'Renseignez votre capacité restante (hors versements auto)'}
                     </small>
                   </div>
                   <div className="investment-card-row">
@@ -1020,8 +1029,7 @@ export function BudgetPage() {
                             : 'Aucun flux suivi'}
                         </span>
                         <small>
-                          Total (auto + manuel) :{' '}
-                          {(automaticAmount + target.monthly).toLocaleString('fr-FR')} €/mois
+                          Ces versements automatiques sont déjà déduits de votre reste à investir.
                         </small>
                       </div>
                     ) : (
@@ -1063,11 +1071,15 @@ export function BudgetPage() {
             </div>
             <div>
               <p className="summary-label">Montant distribué</p>
-              <p className="summary-value">
+              <p
+                className={`summary-value ${
+                  allocationStats.overflowAmount > 0 ? 'warning' : ''
+                }`}
+              >
                 {allocationStats.totalAmount.toLocaleString('fr-FR')} € /{' '}
-                {investableAmount.toLocaleString('fr-FR')} €
+                {allocationStats.manualCapacity.toLocaleString('fr-FR')} €
               </p>
-              <small>Projection basée sur votre reste à investir</small>
+              <small>Projection basée sur votre reste à investir (hors versements auto)</small>
             </div>
             <div>
               <p className="summary-label">Versements automatiques suivis</p>
@@ -1081,7 +1093,7 @@ export function BudgetPage() {
               <p className="summary-value">
                 {allocationStats.remainingAmount.toLocaleString('fr-FR')} €
               </p>
-              <small>Disponible pour de nouveaux supports</small>
+              <small>Disponible pour de nouveaux supports manuels</small>
             </div>
           </div>
         </div>
